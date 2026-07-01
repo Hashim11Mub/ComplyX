@@ -70,12 +70,23 @@ const requirements: MockRequirement[] = [
 
 const negativeSignals = ["لا توجد", "لا يوجد", "بدون", "غير متوفر", "لم يتم"];
 
+function hasNegativeSignalForRequirement(description: string, signals: string[]) {
+  return signals.some((signal) =>
+    negativeSignals.some((negativeSignal) => {
+      const negativeIndex = description.indexOf(negativeSignal);
+      const signalIndex = description.indexOf(signal);
+      if (negativeIndex === -1 || signalIndex === -1) return false;
+      return negativeIndex <= signalIndex && signalIndex - negativeIndex <= 50;
+    })
+  );
+}
+
 export function mockCheckCompliance(product_description: string, product_type: ProductType): ComplianceResult {
   const relevant = requirements.filter((item) => item.productTypes.includes(product_type)).slice(0, 6);
   const findings = relevant.map((requirement) => {
     const matches = requirement.signals.filter((signal) => product_description.includes(signal));
-    const negative = negativeSignals.some((signal) => product_description.includes(signal));
-    const status = negative && matches.length === 0 ? "gap" : matches.length > 0 ? "compliant" : "needs_review";
+    const negative = hasNegativeSignalForRequirement(product_description, requirement.signals);
+    const status = negative ? "gap" : matches.length > 0 ? "compliant" : "needs_review";
     const risk = status === "gap" ? "high" : status === "needs_review" ? "medium" : "low";
 
     return {
@@ -86,7 +97,7 @@ export function mockCheckCompliance(product_description: string, product_type: P
         status === "compliant"
           ? `وصف المنتج يتضمن مؤشرات واضحة مرتبطة بـ ${matches.slice(0, 3).join("، ")}.`
           : status === "gap"
-            ? "توجد فجوة ظاهرة في الوصف مقارنة بهذا الالتزام التنظيمي."
+            ? "توجد صياغة تنفي أو تستبعد ضابطا مرتبطا بهذا الالتزام التنظيمي."
             : "الوصف لا يكفي لإثبات الالتزام الكامل، ويحتاج إلى دليل تشغيلي أو سياسة مكتوبة.",
       recommendation:
         status === "compliant"
@@ -137,4 +148,3 @@ export function mockConsultation(query: string) {
     references: selected
   };
 }
-
