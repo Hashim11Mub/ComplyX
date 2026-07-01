@@ -1,10 +1,27 @@
+# secrets
 .env
+.env.local
+
+# python
 .venv/
-node_modules/
-.next/
 __pycache__/
 *.pyc
-tmp/
+*.pyo
+
+# node
+node_modules/
+.next/
 dist/
 coverage/
+
+# SAMA PDFs — large files, not for repo
+backend/data/regulations/
+
+# Qdrant local storage (if mounted as volume outside Docker)
+qdrant_storage/
+
+# HuggingFace model cache
+.cache/
+
+tmp/
 
