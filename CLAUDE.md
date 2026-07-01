@@ -150,10 +150,7 @@ Primary source: https://rulebook.sama.gov.sa (English PDFs, publicly available)
 
 ## What NOT to Do
 
-- Do not rebuild or restructure the frontend
 - Do not use LlamaIndex (rejected — unnecessary abstraction)
 - Do not use Keycloak (rejected — FastAPI JWT is sufficient)
 - Do not use Pinecone or any managed vector DB (data residency violation)
 - Do not use OpenAI embeddings (data egress violation)
-- Do not run git commands
-- Do not add comments explaining what code does — only add comments for non-obvious WHY
