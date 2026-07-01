@@ -4,18 +4,26 @@
 **Organized by:** Alinma Bank (الإنماء) + Tuwaiq Academy  
 **Track:** Financial Regulations
 
+## Two-Tier Coordination System
+
+**This file (CLAUDE.md)** is the cross-machine coordination layer. It lives inside the git repo and is the single source of truth for all Claude instances regardless of which machine they run on. Any progress, decisions, or plan changes that need to be visible to another machine MUST be written here and committed before the session ends.
+
+**The `agent/` folder** at `../../agent/` (i.e. `<repo-root>/../agent/` — outside the git repo) is the local-machine layer. It is NOT in git and NOT visible to other machines. It tracks session-local state for Claude instances running on THIS machine only — continuity between sessions on the same box.
+
+> **Rule:** If another teammate or another machine needs to know it → write it in CLAUDE.md and commit.  
+> If it's only for your next session on the same machine → write it in `../../agent/HANDOFF.md`.
+
 ## Read This First
 
-Before touching any code, read these files in order:
-1. `../../agent/HANDOFF.md` — what was done last session, what's next, what failed
-2. `../../agent/DECISIONS.md` — locked architecture decisions (do not re-derive)
-3. `../../agent/PLAN.md` — phased plan with deliverables
+Before touching any code:
+1. Read the **Current State**, **Phase Plan**, and **Locked Decisions** sections below — these are the cross-machine shared state.
+2. Then check `../../agent/HANDOFF.md` — local notes from the last session on THIS machine (may not exist if this is a new machine or first session).
 
 ## What This Repo Is
 
 A SAMA (Saudi Central Bank) compliance AI agent. Users paste a financial product description, the system checks it against SAMA regulations and Shariah standards via RAG + LangGraph, and returns a cited compliance report with gap analysis.
 
-## Current State (as of 2026-07-01 — check HANDOFF.md for latest)
+## Current State (as of 2026-07-01 — update this section + commit when a phase changes)
 
 **Frontend — COMPLETE. Do not rebuild it.**
 Located in `frontend/`. Built by a teammate. Next.js 15, Arabic RTL, all components done.
@@ -89,6 +97,30 @@ Open `http://localhost:3000`
 - Set `$env:BACKEND_URL` in the same PowerShell session as `npm run dev` — do NOT use `echo > .env.local` (PowerShell creates UTF-16 files that Node.js can't read)
 - If you see `BACKEND_URL = NOT SET — using mock` in the Next.js terminal, BACKEND_URL wasn't set before starting Next.js. Stop, set it, restart.
 
+## Phase Plan
+
+| Phase | Deliverable | Status |
+|-------|-------------|--------|
+| 0A | Frontend (Next.js RTL, all components) | ✅ Complete |
+| 0B | Backend skeleton (FastAPI, Qdrant, single Claude call) | ✅ Complete |
+| 1 | LangGraph multi-tool agent replacing single Claude call | ⬜ Not started |
+| 2 | PostgreSQL audit log + WeasyPrint PDF export | ⬜ Not started |
+| 3 | RAGAS eval harness (Faithfulness >92%, Precision >85%) | ⬜ Not started |
+
+**Next up:** Phase 1 — implement the 4-tool LangGraph agent in `backend/app/agent/`.
+
+## Locked Decisions
+
+Do not re-derive or debate these. They are set.
+
+- **Embeddings:** `multilingual-e5-large` with `query:` / `passage:` prefixes — chosen for Arabic+English bilingual support, runs locally (no data egress)
+- **Vector DB:** Qdrant self-hosted — data residency requirement; Pinecone is explicitly rejected
+- **LLM:** Claude Sonnet 4.6, `temperature=0`, `tool_use` forced for structured output — not OpenAI (data egress), not text-parsed JSON (unreliable)
+- **PDF parsing:** PyMuPDF — no LlamaIndex (unnecessary abstraction)
+- **Auth:** FastAPI JWT — no Keycloak (rejected, too heavy for hackathon)
+- **Frontend:** Not to be rebuilt. Next.js 15, Arabic RTL. Done.
+- **Pydantic ↔ TypeScript contract:** `backend/app/models.py` must exactly match `frontend/lib/types.ts`. Change both together or neither.
+
 ## Architecture (locked)
 
 ```
@@ -114,10 +146,8 @@ Current Phase 0B: single Claude call replaces the full LangGraph agent. Works en
 **The `/api/check` response JSON must exactly match `frontend/lib/types.ts`.**
 Read `types.ts` before changing any Pydantic model. A mismatch breaks the UI silently.
 
-## Key Design Decisions in `llm.py`
+## `llm.py` Implementation Notes
 
-- `temperature=0` on all Claude calls — required for deterministic compliance reports
-- `tool_use` with `tool_choice={"type": "any"}` — forces structured JSON output, more reliable than text parsing
 - System prompt injects exact `regulation_name` values from retrieved chunks — Claude must use these verbatim for `req_source`, preventing translation/paraphrasing between runs
 - System prompt restricts Claude to only cite articles present in the retrieved context — prevents hallucinated findings from training knowledge
 
@@ -138,9 +168,15 @@ Never commit `.env`, `backend/data/regulations/*.pdf`, or `frontend/.env.local`.
 ## SAMA Regulations — Data Sources
 
 Primary source: https://rulebook.sama.gov.sa (English PDFs, publicly available)
-8 PDFs currently indexed — ask your teammate for the exact filenames/list.
-
-**If asked where SAMA PDFs are:** Ask the user. Do not fabricate PDF paths.
+8 PDFs currently in `backend/data/regulations/` (not in git — large files):
+- `All_Financial_Institutions_SAMA_Rulebook.pdf`
+- `Banking_Sector_SAMA_Rulebook.pdf`
+- `Credit_Bureaus_SAMA_Rulebook.pdf`
+- `Finance_Sector_SAMA_Rulebook.pdf`
+- `Laws_and_Implementing_SAMA_Rulebook.pdf`
+- `Money_Exchange_Sector_SAMA_Rulebook.pdf`
+- `Payment_Systems_and_Payment_Services_Providers_SAMA_Rulebook.pdf`
+- `Regulatory_Sandbox_SAMA_Rulebook.pdf`
 
 ## Quality Targets (do not ship without meeting)
 
