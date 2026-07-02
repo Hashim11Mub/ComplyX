@@ -1,13 +1,36 @@
-# Backend Structure
+# ComplyX Backend
 
-Backend implementation is intentionally deferred.
+FastAPI service powering the compliance analysis pipeline.
 
-This folder is reserved for the later API service that will power:
+## Stack
 
-- `POST /api/check` - compliance analysis
-- `POST /api/chat` - regulatory consultation
-- `POST /api/report` - report generation
-- `GET /api/test-cases` - seeded product examples
+- **FastAPI** — REST API
+- **Qdrant** (self-hosted) — vector store for regulatory chunks
+- **`multilingual-e5-large`** — local bilingual embeddings (Arabic + English)
+- **Claude Sonnet 4.6** — compliance analysis via `tool_use` forced structured output
+- **LangSmith** — optional tracing (set `LANGCHAIN_API_KEY` in `.env`)
 
-The current project runs as a frontend-only Next.js prototype with mock API routes under `frontend/app/api`.
+## Endpoints
 
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/check` | Full compliance scan — returns scored report with findings |
+| `POST` | `/api/chat` | Regulatory Q&A chat with RAG context |
+| `GET` | `/health` | Readiness check + indexed chunk count |
+
+## Setup
+
+See the root [README.md](../README.md) for full setup instructions including Qdrant, ingest, and environment variables.
+
+## Running
+
+```powershell
+uvicorn app.main:app --reload --port 8000 --host 0.0.0.0
+```
+
+## Evaluation
+
+```powershell
+python -m tests.eval_run --limit 2   # smoke test
+python -m tests.eval_run             # full 20-product RAGAS run
+```
