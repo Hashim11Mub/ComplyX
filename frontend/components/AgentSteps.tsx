@@ -1,56 +1,55 @@
-import { CheckCircle2, Circle, Loader2 } from "lucide-react";
+"use client";
+
+import { Check } from "lucide-react";
+import { PIPELINE_STEPS } from "@/lib/mockCompliance";
+import { Lang } from "@/lib/types";
 
 type Props = {
-  steps: string[];
-  currentStep: number;
-  done: boolean;
-  lang?: "ar" | "en";
-  variant?: "card" | "pipeline";
+  activeStep: number;
+  doneFlags: boolean[];
+  lang: Lang;
 };
 
-export default function AgentSteps({ steps, currentStep, done, lang = "ar", variant = "card" }: Props) {
-  const title = lang === "ar" ? "مسار الوكيل" : "Agent path";
-  const complete = lang === "ar" ? "مكتمل" : "Complete";
-  const activeLabel = lang === "ar" ? "نشط" : "Active";
+const T = (lang: Lang, en: string, ar: string) => (lang === "ar" ? ar : en);
 
-  if (variant === "pipeline") {
-    return (
-      <section className="agent-pipeline" aria-label={title}>
-        {steps.map((step, index) => {
-          const completed = done || index < currentStep;
-          const active = !done && index === currentStep;
-          return (
-            <div className={completed ? "pipeline-step done" : active ? "pipeline-step active" : "pipeline-step"} key={step}>
-              <div className="pipeline-node">
-                {active && <span className="pulse-ring" />}
-                {completed ? <CheckCircle2 size={20} /> : active ? <Loader2 className="spin" size={20} /> : <Circle size={20} />}
-              </div>
-              <span>{step}</span>
-            </div>
-          );
-        })}
-      </section>
-    );
-  }
-
+export default function AgentSteps({ activeStep, doneFlags, lang }: Props) {
   return (
-    <section className="panel agent-panel" aria-label="خطوات الوكيل">
-      <div className="section-title">
-        <span>{title}</span>
-        <strong>{done ? complete : activeLabel}</strong>
-      </div>
-      <div className="steps">
-        {steps.map((step, index) => {
-          const completed = done || index < currentStep;
-          const active = !done && index === currentStep;
+    <div className="cx-pipeline" aria-label={T(lang, "Agent analysis pipeline", "مسار تحليل الوكيل")}>
+      <div className="cx-pipeline-list">
+        {PIPELINE_STEPS.map((step, index) => {
+          const done = doneFlags[index];
+          const active = !done && activeStep === index;
+          const pending = !done && !active;
+
           return (
-            <div className="step" key={step}>
-              {completed ? <CheckCircle2 size={20} /> : active ? <Loader2 className="spin" size={20} /> : <Circle size={20} />}
-              <span>{step}</span>
+            <div className={`cx-step-row${active ? " is-active" : ""}`} key={step.labelEn}>
+              <div className="cx-step-node-col">
+                <div className="cx-step-node-wrap">
+                  {active && <div className="cx-pulse-ring" />}
+                  <div className={`cx-step-node${active ? " is-active" : ""}${done ? " is-done" : ""}`}>
+                    {done && <Check size={18} strokeWidth={2.6} />}
+                    {active && <span className="cx-spinner" />}
+                    {pending && <span>{index + 1}</span>}
+                  </div>
+                </div>
+                {index < PIPELINE_STEPS.length - 1 && (
+                  <div className="cx-connector" aria-hidden="true">
+                    <div className={`cx-connector-fill${done ? " is-filled" : ""}`} />
+                  </div>
+                )}
+              </div>
+              <div className="cx-step-copy" style={{ paddingBottom: index < PIPELINE_STEPS.length - 1 ? 22 : 0 }}>
+                <div className={`cx-step-label${active ? " is-current" : ""}${done ? " is-done" : ""}`}>
+                  {T(lang, step.labelEn, step.labelAr)}
+                </div>
+                <div className="cx-step-sub">
+                  {active ? T(lang, "Analyzing", "جار التحليل") : done ? T(lang, "Complete", "مكتمل") : ""}
+                </div>
+              </div>
             </div>
           );
         })}
       </div>
-    </section>
+    </div>
   );
 }

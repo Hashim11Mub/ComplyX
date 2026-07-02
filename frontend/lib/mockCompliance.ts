@@ -1,4 +1,56 @@
-import { ComplianceResult, ProductType, Requirement } from "./types";
+import { ComplianceResult, PipelineStep, Preset, ProductOption, ProductType, Requirement } from "./types";
+
+export const PRODUCT_TYPES: ProductOption[] = [
+  { id: "wallet", labelEn: "Digital Wallet", labelAr: "محفظة رقمية", icon: "wallet", regulatoryType: "payment_services" },
+  { id: "bnpl", labelEn: "Buy Now Pay Later", labelAr: "الشراء الآجل", icon: "bnpl", regulatoryType: "consumer_finance" },
+  { id: "gateway", labelEn: "Payment Gateway", labelAr: "بوابة دفع", icon: "gateway", regulatoryType: "payment_services" },
+  { id: "robo", labelEn: "Robo-Advisory", labelAr: "استشارات آلية", icon: "robo", regulatoryType: "general" },
+  { id: "api", labelEn: "Open Banking API", labelAr: "واجهة مصرفية مفتوحة", icon: "api", regulatoryType: "open_banking" },
+  { id: "crypto", labelEn: "Crypto Custody", labelAr: "حفظ أصول رقمية", icon: "crypto", regulatoryType: "aml" }
+];
+
+export const PRESETS: Preset[] = [
+  {
+    id: "p1",
+    labelEn: "Digital wallet",
+    labelAr: "محفظة رقمية",
+    productId: "wallet",
+    textEn:
+      "A digital wallet that lets users transfer funds between bank accounts, store payment cards, verify customer identity, set transaction limits, and encrypt payment data for local e-commerce payments.",
+    textAr:
+      "محفظة رقمية تتيح للمستخدمين تحويل الأموال بين الحسابات البنكية وتخزين بطاقات الدفع، مع التحقق من الهوية، وحدود للمعاملات، وتشفير بيانات الدفع للتكامل مع المتاجر المحلية."
+  },
+  {
+    id: "p2",
+    labelEn: "BNPL checkout",
+    labelAr: "دفع آجل",
+    productId: "bnpl",
+    textEn:
+      "A buy-now-pay-later product that splits purchases into four installments, discloses fees and repayment schedules, and supports customer complaints through a documented channel.",
+    textAr:
+      "منتج تمويل نقاط البيع يتيح تقسيط المشتريات على أربع دفعات، مع إفصاح عن الرسوم وجدول السداد، وقناة موثقة لمعالجة شكاوى العملاء."
+  },
+  {
+    id: "p3",
+    labelEn: "Open banking API",
+    labelAr: "واجهة مصرفية مفتوحة",
+    productId: "api",
+    textEn:
+      "An open banking API for account information and payments that collects explicit consent, encrypts data in transit, monitors fraud patterns, and logs customer permission withdrawal.",
+    textAr:
+      "واجهة مصرفية مفتوحة لمعلومات الحسابات والمدفوعات تحصل على موافقة صريحة، وتشفّر البيانات أثناء النقل، وتراقب الاحتيال، وتسجل سحب موافقة العميل."
+  }
+];
+
+export const PIPELINE_STEPS: PipelineStep[] = [
+  { labelEn: "Parsing product scope", labelAr: "تحليل نطاق المنتج" },
+  { labelEn: "Retrieving SAMA controls", labelAr: "استرجاع ضوابط ساما" },
+  { labelEn: "Scoring compliance exposure", labelAr: "قياس تعرض الامتثال" },
+  { labelEn: "Compiling evidence-backed findings", labelAr: "تجميع نتائج مدعومة بالأدلة" }
+];
+
+export const INITIAL_ASSISTANT_MESSAGE =
+  "مرحبًا، أنا مساعد ComplyX. يمكنني الإجابة على أسئلتك حول نتائج الفحص أو المواد التنظيمية المذكورة.";
 
 type MockRequirement = Requirement & {
   productTypes: ProductType[];

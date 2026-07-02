@@ -4,7 +4,7 @@ import { mockCheckCompliance } from "@/lib/mockCompliance";
 const BACKEND_URL = process.env.BACKEND_URL;
 
 export async function POST(request: NextRequest) {
-  console.log("[check] BACKEND_URL =", BACKEND_URL ?? "NOT SET — using mock");
+  console.log("[check] BACKEND_URL =", BACKEND_URL ?? "NOT SET - using mock");
   const body = await request.json();
 
   if (BACKEND_URL) {

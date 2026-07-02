@@ -1,3 +1,9 @@
+export type Lang = "ar" | "en";
+
+export type AppState = "input" | "scanning" | "results";
+
+export type InputMode = "describe" | "upload" | "voice";
+
 export type ProductType =
   | "open_banking"
   | "aml"
@@ -34,3 +40,26 @@ export type ComplianceResult = {
   disclaimer: string;
 };
 
+export type ProductIcon = "wallet" | "bnpl" | "gateway" | "robo" | "api" | "crypto";
+
+export type ProductOption = {
+  id: string;
+  labelEn: string;
+  labelAr: string;
+  icon: ProductIcon;
+  regulatoryType: ProductType;
+};
+
+export type Preset = {
+  id: string;
+  labelEn: string;
+  labelAr: string;
+  productId: string;
+  textEn: string;
+  textAr: string;
+};
+
+export type PipelineStep = {
+  labelEn: string;
+  labelAr: string;
+};
