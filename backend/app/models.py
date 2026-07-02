@@ -44,6 +44,30 @@ class CheckRequest(BaseModel):
     lang: str = "ar"         # ar | en
 
 
+class ClarifyOption(BaseModel):
+    value: str
+    label_en: str
+    label_ar: str
+
+
+class ClarifyQuestion(BaseModel):
+    id: str
+    text_en: str
+    text_ar: str
+    allow_multiple: bool = False
+    options: list[ClarifyOption]
+
+
+class ClarifyRequest(BaseModel):
+    product_description: str
+    product_type: ProductType
+    lang: str = "ar"
+
+
+class ClarifyResponse(BaseModel):
+    questions: list[ClarifyQuestion]
+
+
 class ChatMessage(BaseModel):
     role: Literal["user", "assistant"]
     content: str

@@ -1,12 +1,12 @@
 "use client";
 
 import { ChangeEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
-import { checkCompliance } from "@/lib/api";
-import type { ComplianceResult, ProductType as BackendProductType } from "@/lib/types";
+import { checkCompliance, getProductQuestions } from "@/lib/api";
+import type { ComplianceResult, ClarifyQuestion, ProductType as BackendProductType } from "@/lib/types";
 
 type Lang = "ar" | "en";
 type Mode = "describe" | "upload" | "voice";
-type AppState = "input" | "scanning" | "results";
+type AppState = "input" | "clarifying" | "scanning" | "results";
 type Complexity = "simple" | "executive" | "technical";
 type Product = {
   id: string;
@@ -90,9 +90,6 @@ const PRESETS: Preset[] = [
   }
 ];
 
-const SAMPLE_VOICE =
-  "محفظة رقمية موجّهة للأفراد في السعودية، تتيح إيداع الأموال وتحويلها بين المستخدمين والدفع عبر رمز الاستجابة السريعة لدى المتاجر، مع ربط الحساب البنكي وبطاقات مدى.";
-
 const STEP_DEFS: StepDef[] = [
   {
     en: "Extracting product scope",
@@ -130,6 +127,20 @@ const CANNED_REPLY_AR =
 const CANNED_REPLY_EN =
   "Regarding your question: I can help you understand the scan findings or any specific regulatory article. Ask me about any item in the report and I will explain it in detail.";
 
+const DISCLAIMER_AR = "هذا تقرير تحليلي مبني على وثائق تنظيمية متاحة للعموم ولا يُعدّ رأياً قانونياً نهائياً.";
+const DISCLAIMER_EN = "This is an analytical report based on publicly available regulatory documents and does not constitute final legal advice.";
+
+const SAMPLE_EXTRACTED_AR =
+  "محفظة رقمية تتيح للمستخدمين تحويل الأموال بين الحسابات البنكية، وتخزين بطاقات الدفع، والدفع عبر NFC في نقاط البيع. " +
+  "تتكامل المحفظة مع شبكة مدى ومنصة سداد، وتُوثِّق هوية المستخدم عبر نافذة. " +
+  "تعمل المحفظة بموجب ترخيص مزود خدمات الدفع الصادر من مؤسسة النقد العربي السعودي (ساما). " +
+  "الحد اليومي للتحويلات 5,000 ريال سعودي، وتُشفَّر بيانات المستخدم وفق معيار AES-256.";
+const SAMPLE_EXTRACTED_EN =
+  "A digital wallet for Saudi residents enabling fund transfers between bank accounts, card storage, and NFC payments at point of sale. " +
+  "Integrated with the Mada network, SADAD bill payment, and Nafath identity verification. " +
+  "Operates under a SAMA Payment Services Provider licence. " +
+  "Daily transfer limit SAR 5,000. User data encrypted with AES-256 in transit and at rest.";
+
 export default function ComplianceChecker() {
   const [lang, setLang] = useState<Lang>("ar");
   const [mode, setMode] = useState<Mode>("describe");
@@ -158,12 +169,22 @@ export default function ComplianceChecker() {
     { id: 1, fromUser: false, text: "مرحبًا، أنا مساعد ComplyX. اسألني عن أي مادة نظامية أو نتيجة فحص وسأشرحها لك." }
   ]);
 
+  const [clarifyQuestions, setClarifyQuestions] = useState<ClarifyQuestion[]>([]);
+  const [clarifyAnswers, setClarifyAnswers] = useState<Record<string, string[]>>({});
+  const [clarifyLoading, setClarifyLoading] = useState(false);
+  const [submittedDesc, setSubmittedDesc] = useState("");
+  const [uploadExtractedText, setUploadExtractedText] = useState("");
+  const [uploadExtracting, setUploadExtracting] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const rafRef = useRef<number | null>(null);
   const scrollRafRef = useRef<number | null>(null);
   const apiResultRef = useRef<ComplianceResult | null>(null);
   const animationFinishedRef = useRef(false);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const recognitionRef = useRef<any>(null);
 
   const isAr = lang === "ar";
   const dirAttr = isAr ? "rtl" : "ltr";
@@ -188,6 +209,7 @@ export default function ComplianceChecker() {
       clearTimers();
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
       if (scrollRafRef.current) cancelAnimationFrame(scrollRafRef.current);
+      recognitionRef.current?.stop();
     };
   }, []);
 
@@ -229,13 +251,13 @@ export default function ComplianceChecker() {
 
   function hasContent() {
     if (mode === "describe") return inputText.trim().length > 0;
-    if (mode === "upload") return Boolean(uploadedFile);
+    if (mode === "upload") return !uploadExtracting && uploadExtractedText.trim().length > 0;
     if (mode === "voice") return transcript.trim().length > 0;
     return false;
   }
 
   function effectiveDesc() {
-    if (mode === "upload" && uploadedFile) return `مستند مرفوع: ${uploadedFile.name}`;
+    if (mode === "upload") return uploadExtractedText;
     if (mode === "voice") return transcript;
     return inputText;
   }
@@ -246,48 +268,164 @@ export default function ComplianceChecker() {
     setSelectedProduct(preset.productId);
   }
 
-  function onFileChange(event: ChangeEvent<HTMLInputElement>) {
+  async function onFileChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
-    const meta = file.size >= 1_048_576 ? `${(file.size / 1_048_576).toFixed(1)} MB` : `${Math.max(1, Math.round(file.size / 1024))} KB`;
+    const meta = file.size >= 1_048_576
+      ? `${(file.size / 1_048_576).toFixed(1)} MB`
+      : `${Math.max(1, Math.round(file.size / 1024))} KB`;
     setUploadedFile({ name: file.name, meta });
+    setUploadExtractedText("");
+    setUploadError(null);
+
+    const ext = file.name.toLowerCase().split(".").pop() ?? "";
+
+    if (ext === "txt") {
+      setUploadExtracting(true);
+      try {
+        const text = await file.text();
+        if (!text.trim()) throw new Error("empty");
+        setUploadExtractedText(text.trim().slice(0, 8000));
+      } catch {
+        setUploadError(t("Could not read the file", "تعذر قراءة الملف"));
+      } finally {
+        setUploadExtracting(false);
+      }
+      return;
+    }
+
+    if (!["pdf", "docx", "doc"].includes(ext)) {
+      setUploadError(t("Unsupported file type. Use PDF, DOCX, or TXT.", "نوع الملف غير مدعوم. استخدم PDF أو DOCX أو TXT."));
+      return;
+    }
+
+    setUploadExtracting(true);
+    const formData = new FormData();
+    formData.append("file", file);
+    try {
+      const res = await fetch("/api/extract-text", { method: "POST", body: formData });
+      if (res.ok) {
+        const data = await res.json();
+        setUploadExtractedText(data.text);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        setUploadError(
+          err.detail ?? t("Failed to read file", "تعذر قراءة الملف")
+        );
+      }
+    } catch {
+      setUploadError(t("Could not reach the server to read the file", "تعذر الوصول إلى الخادم لقراءة الملف"));
+    } finally {
+      setUploadExtracting(false);
+    }
   }
 
   function useSampleFile() {
-    setUploadedFile({ name: "Product-Spec-DigitalWallet.pdf", meta: "4 صفحات · 312 KB" });
+    setUploadedFile({ name: "Product-Spec-DigitalWallet.pdf", meta: isAr ? "4 صفحات · 312 KB" : "4 pages · 312 KB" });
+    setUploadExtractedText(isAr ? SAMPLE_EXTRACTED_AR : SAMPLE_EXTRACTED_EN);
+    setUploadError(null);
   }
 
   function toggleRecord() {
     if (recording) {
+      recognitionRef.current?.stop();
       setRecording(false);
       return;
     }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const SpeechAPI = (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition;
+    if (!SpeechAPI) {
+      setTranscript(
+        isAr
+          ? "المتصفح لا يدعم التعرف على الصوت. استخدم Chrome أو Edge."
+          : "Voice recognition is not supported in this browser. Please use Chrome or Edge."
+      );
+      return;
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const recognition: any = new SpeechAPI();
+    recognition.lang = isAr ? "ar-SA" : "en-US";
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognitionRef.current = recognition;
+
+    let final = "";
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    recognition.onresult = (event: any) => {
+      let interim = "";
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const chunk = event.results[i][0].transcript;
+        if (event.results[i].isFinal) {
+          final += chunk;
+        } else {
+          interim += chunk;
+        }
+      }
+      setTranscript((final + interim).trim());
+    };
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    recognition.onerror = (event: any) => {
+      if (event.error !== "aborted") {
+        const msg =
+          event.error === "not-allowed"
+            ? t("Microphone permission was denied", "لم يُمنح إذن الميكروفون")
+            : t("Voice recognition error. Please try again.", "حدث خطأ في التعرف على الصوت. حاول مرة أخرى.");
+        setTranscript(msg);
+      }
+      setRecording(false);
+    };
+
+    recognition.onend = () => {
+      setRecording(false);
+    };
+
     setRecording(true);
     setTranscript("");
-    const timer = setTimeout(() => {
-      setRecording(false);
-      setTranscript(SAMPLE_VOICE);
-    }, 2400);
-    timers.current.push(timer);
+    final = "";
+    recognition.start();
   }
 
-  function startScan() {
+  async function startScan() {
     if (!canScan) return;
     clearTimers();
     apiResultRef.current = null;
     animationFinishedRef.current = false;
+    setScanError(null);
+    setComplianceResult(null);
+    setClarifyQuestions([]);
+    setClarifyAnswers({});
+    setClarifyLoading(true);
+    setAppState("clarifying");
+    const scrollTimer = setTimeout(() => scrollToId("clarify"), 80);
+    timers.current.push(scrollTimer);
+
+    const productType: BackendProductType = selectedProduct ? (PRODUCT_TYPE_MAP[selectedProduct] ?? "general") : "general";
+    const { questions } = await getProductQuestions(effectiveDesc(), productType, lang);
+    setClarifyLoading(false);
+
+    if (questions.length === 0) {
+      runActualScan(effectiveDesc());
+    } else {
+      setClarifyQuestions(questions);
+    }
+  }
+
+  function runActualScan(desc: string) {
+    setSubmittedDesc(desc);
     setAppState("scanning");
     setActiveStep(0);
     setDoneFlags([false, false, false, false]);
     setRevealedCount(0);
-    setScanError(null);
-    setComplianceResult(null);
     const scrollTimer = setTimeout(() => scrollToId("scan"), 80);
     timers.current.push(scrollTimer);
 
     const productType: BackendProductType = selectedProduct ? (PRODUCT_TYPE_MAP[selectedProduct] ?? "general") : "general";
 
-    checkCompliance(effectiveDesc(), productType, complexity, lang).then((result) => {
+    checkCompliance(desc, productType, complexity, lang).then((result) => {
       apiResultRef.current = result;
       if (animationFinishedRef.current) finishScan(result);
     }).catch(() => {
@@ -321,6 +459,35 @@ export default function ComplianceChecker() {
       const revealTimer = setTimeout(() => setRevealedCount(index), 280 * index + 150);
       timers.current.push(revealTimer);
     }
+  }
+
+  function buildAugmentedDescription() {
+    const answered = clarifyQuestions.filter(q => (clarifyAnswers[q.id] ?? []).length > 0);
+    if (answered.length === 0) return effectiveDesc();
+    const header = isAr ? "\n\n[تفاصيل إضافية يقدمها المستخدم]\n" : "\n\n[Additional details provided by user]\n";
+    const lines = answered.map(q => {
+      const selectedVals = clarifyAnswers[q.id] ?? [];
+      const selectedLabels = q.options
+        .filter(o => selectedVals.includes(o.value))
+        .map(o => isAr ? o.label_ar : o.label_en);
+      return `- ${isAr ? q.text_ar : q.text_en}: ${selectedLabels.join(", ")}`;
+    });
+    return effectiveDesc() + header + lines.join("\n");
+  }
+
+  function toggleClarifyAnswer(questionId: string, value: string, allowMultiple: boolean) {
+    setClarifyAnswers(prev => {
+      const current = prev[questionId] ?? [];
+      if (allowMultiple) {
+        const next = current.includes(value) ? current.filter(v => v !== value) : [...current, value];
+        return { ...prev, [questionId]: next };
+      }
+      return { ...prev, [questionId]: current.includes(value) ? [] : [value] };
+    });
+  }
+
+  function submitClarifications() {
+    runActualScan(buildAugmentedDescription());
   }
 
   function finishScan(result: ComplianceResult) {
@@ -374,6 +541,12 @@ export default function ComplianceChecker() {
     setExpandedFindingId(null);
     setComplianceResult(null);
     setScanError(null);
+    setClarifyQuestions([]);
+    setClarifyAnswers({});
+    setClarifyLoading(false);
+    setSubmittedDesc("");
+    recognitionRef.current?.stop();
+    setRecording(false);
     const timer = setTimeout(() => scrollToId("input"), 80);
     timers.current.push(timer);
   }
@@ -384,7 +557,25 @@ export default function ComplianceChecker() {
     const productType: BackendProductType = selectedProduct ? (PRODUCT_TYPE_MAP[selectedProduct] ?? "general") : "general";
     setIsRefetching(true);
     try {
-      const result = await checkCompliance(effectiveDesc(), productType, newComplexity, lang);
+      const result = await checkCompliance(submittedDesc || effectiveDesc(), productType, newComplexity, lang);
+      setComplianceResult(result);
+      const target = CIRCUMFERENCE * (1 - result.compliance_score / 100);
+      setDialOffset(target);
+      setDialDisplay(result.compliance_score);
+    } catch {
+      // keep existing result on error
+    } finally {
+      setIsRefetching(false);
+    }
+  }
+
+  async function handleLangChange(newLang: Lang) {
+    setLang(newLang);
+    if (!complianceResult || isRefetching) return;
+    const productType: BackendProductType = selectedProduct ? (PRODUCT_TYPE_MAP[selectedProduct] ?? "general") : "general";
+    setIsRefetching(true);
+    try {
+      const result = await checkCompliance(submittedDesc || effectiveDesc(), productType, complexity, newLang);
       setComplianceResult(result);
       const target = CIRCUMFERENCE * (1 - result.compliance_score / 100);
       setDialOffset(target);
@@ -418,6 +609,9 @@ export default function ComplianceChecker() {
   function downloadReport() {
     if (!complianceResult) return;
     const recLabel = isAr ? "التوصية" : "Recommendation";
+    const analysisLabel = isAr ? "التحليل" : "Analysis";
+    const sourceLabel = isAr ? "المصدر" : "Source";
+    const articleTextLabel = isAr ? "نص المادة" : "Article Text";
     const lines = [
       isAr ? "ComplyX - تقرير فحص الامتثال" : "ComplyX - Compliance Report",
       `Ref: ${refNumber}   Score: ${complianceResult.compliance_score}/100   Risk: ${complianceResult.risk_level.toUpperCase()}`,
@@ -425,13 +619,22 @@ export default function ComplianceChecker() {
       "",
       complianceResult.executive_summary,
       "",
-      ...complianceResult.findings.flatMap((finding) => [
-        `[${finding.status.toUpperCase()}] ${finding.requirement.article}: ${finding.requirement.title}`,
-        finding.analysis,
-        `${recLabel}: ${finding.recommendation}`,
-        ""
-      ]),
-      complianceResult.disclaimer
+      ...complianceResult.findings.flatMap((finding, idx) => {
+        const num = `F-${String(idx + 1).padStart(2, "0")}`;
+        const rows: string[] = [
+          `${num} [${finding.status.toUpperCase()}] ${finding.requirement.article}: ${finding.requirement.title}`,
+          `${sourceLabel}: ${finding.requirement.source}`,
+        ];
+        if (finding.requirement.text) {
+          rows.push(`${articleTextLabel}:`);
+          rows.push(finding.requirement.text);
+        }
+        rows.push(`${analysisLabel}: ${finding.analysis}`);
+        rows.push(`${recLabel}: ${finding.recommendation}`);
+        rows.push("");
+        return rows;
+      }),
+      isAr ? DISCLAIMER_AR : DISCLAIMER_EN
     ];
     const blob = new Blob([lines.join("\n")], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
@@ -522,10 +725,10 @@ export default function ComplianceChecker() {
           </div>
           <div className="cx-lang-toggle">
             <div className={`cx-lang-indicator${isAr ? " is-ar" : ""}`} />
-            <button className={`cx-lang-btn${!isAr ? " is-active" : ""}`} onClick={() => setLang("en")} type="button">
+            <button className={`cx-lang-btn${!isAr ? " is-active" : ""}`} onClick={() => handleLangChange("en")} type="button">
               EN
             </button>
-            <button className={`cx-lang-btn${isAr ? " is-active" : ""}`} onClick={() => setLang("ar")} type="button">
+            <button className={`cx-lang-btn${isAr ? " is-active" : ""}`} onClick={() => handleLangChange("ar")} type="button">
               AR
             </button>
           </div>
@@ -645,19 +848,28 @@ export default function ComplianceChecker() {
                         <div className="cx-file-copy">
                           <strong>{uploadedFile.name}</strong>
                           <span>{uploadedFile.meta}</span>
-                          <em>
-                            <CheckMini />
-                            {t("Ready to scan", "جاهز للفحص")}
-                          </em>
+                          {uploadExtracting ? (
+                            <em style={{ color: "var(--teal-700)" }}>
+                              <span style={{ display: "inline-block", width: 12, height: 12, border: "2px solid rgba(0,107,104,0.2)", borderTopColor: "var(--teal-700)", borderRadius: "50%", animation: "spin 0.8s linear infinite", flexShrink: 0 }} />
+                              {t("Extracting text...", "جارٍ استخراج النص...")}
+                            </em>
+                          ) : uploadError ? (
+                            <em style={{ color: "var(--danger)" }}>{uploadError}</em>
+                          ) : uploadExtractedText ? (
+                            <em>
+                              <CheckMini />
+                              {t("Ready to scan", "جاهز للفحص")}
+                            </em>
+                          ) : null}
                         </div>
-                        <button className="cx-remove-file" onClick={() => setUploadedFile(null)} type="button" aria-label={t("Remove file", "إزالة الملف")}>
+                        <button className="cx-remove-file" onClick={() => { setUploadedFile(null); setUploadExtractedText(""); setUploadError(null); }} type="button" aria-label={t("Remove file", "إزالة الملف")}>
                           <CloseMini />
                         </button>
                       </div>
                     ) : (
                       <>
                         <label className="cx-upload-zone">
-                          <input onChange={onFileChange} type="file" />
+                          <input accept=".pdf,.docx,.doc,.txt" onChange={onFileChange} type="file" />
                           <span className="cx-upload-icon">
                             <UploadMini />
                           </span>
@@ -719,6 +931,67 @@ export default function ComplianceChecker() {
               </div>
             </div>
           </section>
+
+          {appState === "clarifying" && (
+            <section className="cx-clarify-section" data-screen-label="Clarify" id="clarify">
+              <div className="cx-input-bg" aria-hidden="true">
+                <div className="cx-input-orb one" />
+                <div className="cx-input-orb two" />
+                <div className="cx-input-grid-mask" />
+              </div>
+              <div className="cx-clarify-shell">
+                <div className="cx-input-heading">
+                  <div className="cx-input-kicker">{t("STEP 1.5 · PRODUCT DETAILS", "الخطوة 1.5 · تفاصيل المنتج")}</div>
+                  <h2>{t("Help us understand your product", "ساعدنا على فهم منتجك بشكل أدق")}</h2>
+                  <p>{t("Select the options that best describe your product for a more accurate compliance report.", "اختر الخيارات التي تصف منتجك للحصول على تقرير امتثال أكثر دقة.")}</p>
+                </div>
+
+                {clarifyLoading ? (
+                  <div className="cx-clarify-loading">
+                    <span className="cx-spinner" style={{ width: 22, height: 22, borderColor: "rgba(0,107,104,0.25)", borderTopColor: "var(--teal-700)" }} />
+                    {t("Analysing your description...", "جارٍ تحليل الوصف...")}
+                  </div>
+                ) : (
+                  <div className="cx-clarify-card">
+                    {clarifyQuestions.map((question, qi) => (
+                      <div className="cx-clarify-question" key={question.id}>
+                        <div className="cx-clarify-q-label">
+                          <span>{qi + 1}</span>
+                          {isAr ? question.text_ar : question.text_en}
+                        </div>
+                        <div className="cx-clarify-chips">
+                          {question.options.map(option => {
+                            const selected = (clarifyAnswers[question.id] ?? []).includes(option.value);
+                            return (
+                              <button
+                                className={`cx-clarify-chip${selected ? " is-active" : ""}`}
+                                key={option.value}
+                                onClick={() => toggleClarifyAnswer(question.id, option.value, question.allow_multiple)}
+                                type="button"
+                              >
+                                {selected && <CheckSmall />}
+                                {isAr ? option.label_ar : option.label_en}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+
+                    <div className="cx-clarify-actions">
+                      <button className="cx-cta is-enabled" onClick={submitClarifications} style={{ marginTop: 0 }} type="button">
+                        <SearchMini />
+                        {t("Continue to Compliance Scan", "متابعة فحص الامتثال")}
+                      </button>
+                      <button className="cx-clarify-skip" onClick={() => runActualScan(effectiveDesc())} type="button">
+                        {t("Skip, use my description as-is", "تخطَّ وابدأ الفحص بالوصف الحالي")}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </section>
+          )}
 
           {hasStarted && (
             <section className="cx-scan-section" data-screen-label="Scanning" id="scan">
@@ -908,7 +1181,7 @@ export default function ComplianceChecker() {
                 {isRefetching && (
                   <div className="cx-refetch-bar">
                     <span className="cx-spinner" />
-                    {t("Re-analysing with new detail level...", "إعادة التحليل بالمستوى الجديد...")}
+                    {t("Updating report...", "جارٍ تحديث التقرير...")}
                   </div>
                 )}
 
@@ -923,23 +1196,42 @@ export default function ComplianceChecker() {
                     <strong>{t(`${gapCount} gaps · ${reviewCount} to review`, `${gapCount} فجوة · ${reviewCount} بحاجة لمراجعة`)}</strong>
                   </div>
                   <div className="cx-findings-list">
-                    {(complianceResult?.findings ?? []).map((finding) => {
+                    {(complianceResult?.findings ?? []).map((finding, idx) => {
                       const findingKey = finding.requirement.id;
                       const expanded = expandedFindingId === findingKey;
                       const compliant = finding.status === "compliant";
                       const barColor = finding.status === "gap" ? "#b42318" : finding.status === "needs_review" ? "#a15c09" : "#147a5b";
                       const badgeBg = finding.status === "gap" ? "rgba(180,35,24,.1)" : finding.status === "needs_review" ? "rgba(161,92,9,.1)" : "rgba(20,122,91,.1)";
                       const statusLabel = finding.status === "gap" ? t("Gap", "فجوة") : finding.status === "needs_review" ? t("Needs Review", "بحاجة لمراجعة") : t("Compliant", "متوافق");
+                      const findingNum = `F-${String(idx + 1).padStart(2, "0")}`;
                       return (
                         <article className={`cx-finding-row${compliant ? " is-compliant" : ""}`} key={findingKey}>
                           <button className="cx-finding-header" onClick={() => setExpandedFindingId(expanded ? null : findingKey)} style={{ borderInlineStartColor: barColor }} type="button">
+                            <span className="cx-finding-num">{findingNum}</span>
                             <span style={{ background: badgeBg, color: barColor }}>{statusLabel}</span>
                             <em>{finding.requirement.article}</em>
                             <strong dir="rtl">{finding.requirement.title}</strong>
                             <ChevronMini expanded={expanded} />
                           </button>
                           <div className={`cx-finding-body${expanded ? " is-expanded" : ""}`}>
-                            <div dir="rtl" style={{ borderInlineStartColor: barColor }}>
+                            <div dir={dirAttr} style={{ borderInlineStartColor: barColor }}>
+                              <div className="cx-reg-basis">
+                                <div className="cx-reg-basis-header">
+                                  <BookMini />
+                                  {t("Regulatory Basis", "الأساس التنظيمي")}
+                                </div>
+                                <div className="cx-reg-source-pill">
+                                  <span>{finding.requirement.source}</span>
+                                  <span className="cx-reg-dot" />
+                                  <span>{finding.requirement.article}</span>
+                                </div>
+                                {finding.requirement.text && (
+                                  <div className="cx-reg-verbatim" dir="rtl">
+                                    {finding.requirement.text}
+                                  </div>
+                                )}
+                              </div>
+                              <div>{t("Analysis", "التحليل")}</div>
                               <p>{finding.analysis}</p>
                               <div>{t("Recommendation", "التوصية")}</div>
                               <p>{finding.recommendation}</p>
@@ -951,8 +1243,8 @@ export default function ComplianceChecker() {
                   </div>
                 </div>
 
-                {complianceResult?.disclaimer && (
-                  <p className="cx-disclaimer" dir={dirAttr}>{complianceResult.disclaimer}</p>
+                {complianceResult && (
+                  <p className="cx-disclaimer" dir={dirAttr}>{isAr ? DISCLAIMER_AR : DISCLAIMER_EN}</p>
                 )}
 
                 <button className="cx-download-btn" onClick={downloadReport} type="button">
@@ -1299,6 +1591,15 @@ function ClockMini() {
   );
 }
 
+function BookMini() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+      <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+    </svg>
+  );
+}
+
 function ChevronMini({ expanded }: { expanded: boolean }) {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#65777d" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ transform: `rotate(${expanded ? 180 : 0}deg)` }}>
@@ -1329,6 +1630,14 @@ function ShieldChatMini() {
     <svg width="14" height="15" viewBox="0 0 200 220" fill="none" stroke="#ffffff" strokeWidth="14" strokeLinejoin="round">
       <path d="M52 26 L148 26 Q170 26 170 48 L170 108 Q170 158 100 198 Q30 158 30 108 L30 48 Q30 26 52 26 Z" />
       <path d="M70 106 L90 126 L136 74" strokeWidth="15" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+    </svg>
+  );
+}
+
+function CheckSmall() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M20 6L9 17l-5-5" />
     </svg>
   );
 }

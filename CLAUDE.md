@@ -23,31 +23,38 @@ Before touching any code:
 
 A SAMA (Saudi Central Bank) compliance AI agent. Users paste a financial product description, the system checks it against SAMA regulations and Shariah standards via RAG + LangGraph, and returns a cited compliance report with gap analysis.
 
-## Current State (as of 2026-07-02 — update this section + commit when a phase changes)
+## Current State (as of 2026-07-03 — update this section + commit when a phase changes)
 
 **Frontend — COMPLETE and CONNECTED to real backend.**
 Located in `frontend/`. Next.js 15, Arabic RTL, all components done AND wired to live FastAPI.
-- `frontend/components/ComplianceChecker.tsx` — main UI; fully connected to real API (no mock). Concurrent animation + API: `apiResultRef` / `animationFinishedRef` refs so whichever finishes last calls `finishScan()`. 2.5s hold on scan view so user reads regulation titles before report appears. Slot count is dynamic (`complianceResult.findings.length`), not hardcoded 6.
+- `frontend/components/ComplianceChecker.tsx` — main UI; fully connected to real API (no mock). All input modes live (describe, upload, voice). Clarification interview intercepts scan. Language switch triggers full re-fetch. Findings show traceable regulatory basis. Concurrent animation + API: `apiResultRef` / `animationFinishedRef` refs so whichever finishes last calls `finishScan()`. 2.5s hold on scan view so user reads regulation titles before report appears. Slot count is dynamic (`complianceResult.findings.length`), not hardcoded 6.
 - `frontend/components/AgentSteps.tsx` — live step visualization
 - `frontend/components/ChatConsultation.tsx` — regulatory chat
-- `frontend/components/ComplianceReport.tsx` — report display + download
-- `frontend/lib/types.ts` — TypeScript types **your Pydantic models must match exactly**
-- `frontend/lib/api.ts` — `checkCompliance(desc, productType, tone, lang)` — real API call, no mock
+- `frontend/components/ComplianceReport.tsx` — **dead code, not imported anywhere** — all report rendering is inline in ComplianceChecker.tsx. Can be deleted.
+- `frontend/lib/types.ts` — TypeScript types **your Pydantic models must match exactly**. Includes `AppState` (`"input" | "clarifying" | "scanning" | "results"`), `ClarifyQuestion`, `ClarifyOption`, `ClarifyResponse`.
+- `frontend/lib/api.ts` — `checkCompliance(desc, productType, tone, lang)` + `getProductQuestions(desc, productType, lang)` — real API calls, no mock
 - `frontend/app/api/check/route.ts` — proxies to FastAPI
+- `frontend/app/api/clarify/route.ts` — proxies to FastAPI; falls back to `{questions:[]}` if backend unreachable
+- `frontend/app/api/extract-text/route.ts` — proxies multipart FormData to FastAPI; 503 if backend not configured
 
 **Backend — COMPLETE (single-call RAG, bilingual, LangSmith traced).**
 Located in `backend/app/`. All files exist and are working.
 - `config.py` — pydantic-settings, reads `.env` via absolute path (critical — see HANDOFF)
-- `models.py` — Pydantic models with `tone` + `lang` on CheckRequest; `disclaimer` + `agent_steps` on ComplianceResult
+- `models.py` — Pydantic models: `CheckRequest` (`tone` + `lang`), `ComplianceResult` (`disclaimer` + `agent_steps`), `ClarifyRequest`, `ClarifyResponse`, `ClarifyQuestion`, `ClarifyOption`
 - `embeddings.py` — multilingual-e5-large, `query:` / `passage:` prefixes
 - `retriever.py` — Qdrant client, uses `query_points()` (qdrant-client 2.x)
 - `ingest.py` — PDF → chunks → Qdrant; run once per machine to populate the DB
-- `llm.py` — Claude Sonnet 4.6, `temperature=0`, `tool_use` forced output, `max_tokens=8192`, LangSmith `@traceable`, bilingual (Arabic/English system prompts + req_title language), retrieval limit 16
-- `main.py` — FastAPI app, CORS, startup health check
+- `llm.py` — Claude Sonnet 4.6, `temperature=0`, `tool_use` forced output, `max_tokens=8192`, LangSmith `@traceable`, bilingual; `analyze_compliance()` + `generate_clarification_questions()` + `answer_regulatory_question()`
+- `main.py` — FastAPI app, CORS, startup health check; registers check + chat + clarify + extract routers
 - `routes/check.py` — POST /api/check (retrieval limit 16 chunks)
 - `routes/chat.py` — POST /api/chat
+- `routes/clarify.py` — POST /api/clarify; returns `{questions:[]}` for short descriptions; 0–4 structured multiple-choice questions
+- `routes/extract.py` — POST /api/extract-text; supports PDF (PyMuPDF), DOCX (python-docx), TXT; max 8,000 chars with truncation flag
 
-**Eval Harness — NEW.**
+**New deps in requirements.txt:** `python-multipart>=0.0.9`, `python-docx>=1.1.0`
+Run `pip install python-multipart python-docx` after pulling on any machine.
+
+**Eval Harness.**
 - `backend/tests/eval_run.py` — 20-product evaluation harness with manual source faithfulness metric (replaced RAGAS — incompatible with Anthropic). Stores `_retrieved_sources` and `_finding_sources` per product for faithfulness calculation.
 - `backend/tests/synthetic_products.json` — 20 synthetic Arabic/English products across 4 types
 - `backend/tests/eval_results.json` — results from completed 20-product run
@@ -63,9 +70,9 @@ Located in `backend/app/`. All files exist and are working.
 - LangGraph multi-tool agent (Phase 1) — still using single Claude call
 - PostgreSQL audit log (Phase 2)
 - WeasyPrint PDF export (Phase 2)
-- Voice and upload modes in frontend (feature exists in UI but not connected to backend)
 - SDAIA PDPL PDFs not yet indexed
 - AAOIFI Shariah Standards PDF not yet indexed
+- `frontend/components/ComplianceReport.tsx` cleanup — dead code, safe to delete
 
 ## New Team Member / New Machine Setup
 
@@ -121,11 +128,12 @@ Open `http://localhost:3000`
 | 0A | Frontend (Next.js RTL, all components) | ✅ Complete |
 | 0B | Backend skeleton (FastAPI, Qdrant, single Claude call) | ✅ Complete |
 | B | Frontend connected to real backend; bilingual; UI fixes; eval harness | ✅ Complete (2026-07-02) |
-| 1 | LangGraph multi-tool agent replacing single Claude call | ⬜ Deferred — hackathon submitted |
+| C | Clarification interview; upload/voice input; language switch fix; traceable findings | ✅ Complete (2026-07-03) |
+| 1 | LangGraph multi-tool agent replacing single Claude call | ⬜ Deferred |
 | 2 | PostgreSQL audit log + WeasyPrint PDF export | ⬜ Deferred |
 | 3 | Additional regulation sources (SDAIA PDPL, AAOIFI Shariah Standards) | ⬜ Deferred |
 
-**Status:** Hackathon submission build complete. All core features working end-to-end. Deferred phases are post-submission improvements.
+**Status:** Hackathon submission build complete. All core features working end-to-end. Phase C polish complete. Deferred phases are post-submission improvements.
 
 ## Locked Decisions
 
@@ -168,6 +176,20 @@ Read `types.ts` before changing any Pydantic model. A mismatch breaks the UI sil
 
 - System prompt injects exact `regulation_name` values from retrieved chunks — Claude must use these verbatim for `req_source`, preventing translation/paraphrasing between runs
 - System prompt restricts Claude to only cite articles present in the retrieved context — prevents hallucinated findings from training knowledge
+- `generate_clarification_questions()` uses `CLARIFY_TOOL` (tool_use forced), returns 0–4 questions targeting 7 compliance-critical dimensions; returns `ClarifyResponse(questions=[])` on any error — clarification is optional, scan always proceeds
+- `req_text` in `COMPLIANCE_TOOL` is "exact article text from the regulation" — Claude copies it from the retrieved chunk context at temperature=0; this is surfaced in the UI as the "Regulatory Basis" verbatim quote for traceability
+
+## Input Modes
+
+- **Describe:** plain text, `inputText` state → `effectiveDesc()`
+- **Upload:** `onFileChange()` extracts text — TXT via `file.text()` client-side; PDF/DOCX via POST `/api/extract-text` → FastAPI → PyMuPDF/python-docx; result stored in `uploadExtractedText` state → `effectiveDesc()`
+- **Voice:** Web Speech API (`window.SpeechRecognition` / `window.webkitSpeechRecognition`), `recognition.lang = isAr ? "ar-SA" : "en-US"`, continuous + interim results; stored in `transcript` state → `effectiveDesc()`
+
+## Clarification Interview Flow
+
+`startScan()` → POST `/api/clarify` → 0 questions? → `runActualScan(effectiveDesc())` directly  
+→ 1–4 questions? → `AppState = "clarifying"` → user answers chips → `submitClarifications()` → `buildAugmentedDescription()` appends answers to description → `runActualScan(augmented)`  
+`submittedDesc` stores the augmented description so complexity/language re-fetches use identical input.
 
 ## Git Rules (IMPORTANT)
 

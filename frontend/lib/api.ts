@@ -1,4 +1,4 @@
-import { ComplianceResult, ProductType } from "./types";
+import { ComplianceResult, ClarifyResponse, ProductType } from "./types";
 
 export async function checkCompliance(
   product_description: string,
@@ -13,6 +13,24 @@ export async function checkCompliance(
   });
   if (!response.ok) throw new Error("تعذر تنفيذ فحص الامتثال");
   return (await response.json()) as ComplianceResult;
+}
+
+export async function getProductQuestions(
+  product_description: string,
+  product_type: ProductType,
+  lang: "ar" | "en" = "ar"
+): Promise<ClarifyResponse> {
+  try {
+    const response = await fetch("/api/clarify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ product_description, product_type, lang })
+    });
+    if (!response.ok) return { questions: [] };
+    return (await response.json()) as ClarifyResponse;
+  } catch {
+    return { questions: [] };
+  }
 }
 
 export async function askConsultant(query: string, messages: { role: "user" | "assistant"; content: string }[]) {

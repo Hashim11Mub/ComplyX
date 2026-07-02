@@ -6,7 +6,10 @@ Uses tool_use for structured output on compliance checks (more reliable than JSO
 import os
 import anthropic
 from .config import settings
-from .models import ComplianceResult, Finding, Requirement, ProductType
+from .models import (
+    ComplianceResult, Finding, Requirement, ProductType,
+    ClarifyOption, ClarifyQuestion, ClarifyResponse,
+)
 
 # Enable LangSmith tracing when configured
 if settings.langchain_tracing_v2 and settings.langchain_api_key:
@@ -120,6 +123,130 @@ COMPLIANCE_TOOL = {
         },
     },
 }
+
+
+CLARIFY_TOOL = {
+    "name": "return_clarification_questions",
+    "description": "Return targeted clarification questions for missing compliance-critical details",
+    "input_schema": {
+        "type": "object",
+        "required": ["questions"],
+        "properties": {
+            "questions": {
+                "type": "array",
+                "description": "0-4 targeted questions. Empty array if description is already comprehensive.",
+                "items": {
+                    "type": "object",
+                    "required": ["id", "text_en", "text_ar", "allow_multiple", "options"],
+                    "properties": {
+                        "id": {
+                            "type": "string",
+                            "description": "Short kebab-case slug e.g. 'license-status'",
+                        },
+                        "text_en": {"type": "string", "description": "Question in English"},
+                        "text_ar": {"type": "string", "description": "Question in Arabic"},
+                        "allow_multiple": {
+                            "type": "boolean",
+                            "description": "True if the user may select multiple answers",
+                        },
+                        "options": {
+                            "type": "array",
+                            "minItems": 2,
+                            "maxItems": 4,
+                            "items": {
+                                "type": "object",
+                                "required": ["value", "label_en", "label_ar"],
+                                "properties": {
+                                    "value": {
+                                        "type": "string",
+                                        "description": "Machine-readable slug",
+                                    },
+                                    "label_en": {"type": "string"},
+                                    "label_ar": {"type": "string"},
+                                },
+                            },
+                        },
+                    },
+                },
+            }
+        },
+    },
+}
+
+
+@_traceable(name="generate_clarification_questions")
+def generate_clarification_questions(
+    product_description: str,
+    product_type: ProductType,
+    lang: str = "ar",
+) -> ClarifyResponse:
+    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+
+    system_prompt = (
+        "You are a SAMA (Saudi Central Bank) compliance intake specialist.\n"
+        "Given a financial product description, identify the 0-4 most critical missing details "
+        "needed for an accurate SAMA compliance assessment.\n\n"
+        "Compliance-critical dimensions to check (only ask if genuinely missing or ambiguous):\n"
+        "1. License status — operating under existing SAMA/SOCPA license, applying, or pre-application?\n"
+        "2. Target users — Saudi nationals, residents, SMEs, retail consumers, or combinations?\n"
+        "3. Transaction limits — daily/monthly volumes and per-transaction caps\n"
+        "4. Data handling — personal/financial data collected, stored, processed\n"
+        "5. Third-party integrations — Saudi banks, SADAD, SARIE, international networks\n"
+        "6. Authentication method — OTP, biometric, multi-factor, password only\n"
+        "7. Credit/lending component — any credit extension, BNPL, or interest-bearing element\n\n"
+        "Rules:\n"
+        "- Return 0 questions if the description already addresses the relevant dimensions\n"
+        "- Maximum 4 questions total\n"
+        "- Each question must have 2-4 crisp, distinct options\n"
+        "- Do NOT ask about things already stated in the description\n"
+        "- Provide every question and option label in both Arabic and English"
+    )
+
+    user_message = (
+        f"Product type: {product_type}\n\n"
+        f"Product description:\n{product_description}\n\n"
+        "Identify the missing compliance-critical details and return targeted questions."
+    )
+
+    response = client.messages.create(
+        model=MODEL,
+        max_tokens=1500,
+        temperature=0,
+        system=system_prompt,
+        messages=[{"role": "user", "content": user_message}],
+        tools=[CLARIFY_TOOL],
+        tool_choice={"type": "any"},
+    )
+
+    tool_result = next(
+        (block for block in response.content if block.type == "tool_use"),
+        None,
+    )
+    if tool_result is None:
+        return ClarifyResponse(questions=[])
+
+    data = tool_result.input
+    questions = []
+    for q in data.get("questions", []):
+        options = [
+            ClarifyOption(
+                value=o["value"],
+                label_en=o["label_en"],
+                label_ar=o["label_ar"],
+            )
+            for o in q.get("options", [])
+        ]
+        questions.append(
+            ClarifyQuestion(
+                id=q["id"],
+                text_en=q["text_en"],
+                text_ar=q["text_ar"],
+                allow_multiple=q.get("allow_multiple", False),
+                options=options,
+            )
+        )
+
+    return ClarifyResponse(questions=questions)
 
 
 def _build_context(chunks: list[dict]) -> tuple[str, list[str]]:

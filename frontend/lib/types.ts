@@ -1,6 +1,6 @@
 export type Lang = "ar" | "en";
 
-export type AppState = "input" | "scanning" | "results";
+export type AppState = "input" | "clarifying" | "scanning" | "results";
 
 export type InputMode = "describe" | "upload" | "voice";
 
@@ -62,4 +62,22 @@ export type Preset = {
 export type PipelineStep = {
   labelEn: string;
   labelAr: string;
+};
+
+export type ClarifyOption = {
+  value: string;
+  label_en: string;
+  label_ar: string;
+};
+
+export type ClarifyQuestion = {
+  id: string;
+  text_en: string;
+  text_ar: string;
+  allow_multiple: boolean;
+  options: ClarifyOption[];
+};
+
+export type ClarifyResponse = {
+  questions: ClarifyQuestion[];
 };
