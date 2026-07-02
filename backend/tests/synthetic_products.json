@@ -1,0 +1,122 @@
+[
+{
+"id": "p01",
+"product_type": "payment_services",
+"lang": "ar",
+"description": "يوفر هذا المنتج محفظة رقمية مخصصة للمستخدمين في المملكة العربية السعودية تتيح الدفع عبر نقاط البيع والمتاجر الإلكترونية باستخدام بطاقات مدى وربط الحسابات البنكية المحلية. يمكن للمستخدم إرسال واستقبال الأموال بشكل فوري، ودفع الفواتير الحكومية، وشحن المحافظ الأخرى. يدعم التطبيق المصادقة متعددة العوامل والإشعارات الفورية لكل عملية مالية، كما يوفر سجلاً كاملاً للمعاملات مع إمكانية تصدير التقارير. تم تصميم الخدمة لتتكامل مع منصات التجارة الإلكترونية السعودية وتدعم عمليات الاسترداد وإدارة النزاعات. يعتمد النظام على ضوابط أمنية حديثة ويستهدف الأفراد وأصحاب المشاريع الصغيرة مع تجربة استخدام مبسطة باللغة العربية والإنجليزية."
+},
+{
+"id": "p02",
+"product_type": "payment_services",
+"lang": "en",
+"description": "This payment platform enables Saudi merchants to accept mada cards, digital wallets, and bank transfers through a unified checkout experience. It supports recurring billing, invoice generation, QR code payments, and settlement reports for finance teams. Merchants can integrate the service through REST APIs or ready-made plugins for popular e-commerce platforms. Transactions are monitored for fraud using behavioral analytics, while customers receive instant payment confirmations. The solution is intended for businesses operating within Saudi Arabia and can scale from small online stores to enterprise retailers with high transaction volumes."
+},
+{
+"id": "p03",
+"product_type": "payment_services",
+"lang": "ar",
+"description": "يسمح هذا الحل بإجراء التحويلات المحلية والدولية من خلال تطبيق واحد مع إمكانية الربط بمحفظة STC Pay والحسابات البنكية. يمكن للمستخدم تحويل الأموال إلى أفراد أو شركات مع تتبع حالة الحوالة لحظياً وإدارة المستفيدين الموثوقين. كما يوفر خاصية جدولة المدفوعات الدورية للشركات الصغيرة ورواد الأعمال، بالإضافة إلى أدوات لمطابقة المدفوعات مع الفواتير الإلكترونية. يدعم النظام معايير الأمان الحديثة ويحتفظ بسجل تدقيق يساعد المستخدمين على مراجعة جميع العمليات بسهولة."
+},
+{
+"id": "p04",
+"product_type": "payment_services",
+"lang": "ar",
+"description": "تقدم الخدمة بوابة دفع موجهة للمتاجر الإلكترونية السعودية مع دعم عمليات الدفع عبر رمز الاستجابة السريعة، وبطاقات مدى، والمحافظ الرقمية. يستطيع التاجر إصدار روابط دفع، وإنشاء تقارير يومية للمبيعات، وإدارة عمليات الاسترجاع والإلغاء. كما توفر أدوات لمراقبة محاولات الاحتيال، وإعداد صلاحيات مختلفة للموظفين، ولوحة تحكم تعرض مؤشرات الأداء في الوقت الفعلي، مما يجعلها مناسبة للشركات الناشئة والمتاجر المتوسطة."
+},
+{
+"id": "p05",
+"product_type": "consumer_finance",
+"lang": "en",
+"description": "This consumer finance application offers a Buy Now, Pay Later service for purchases made at Saudi online retailers. Customers can split eligible purchases into equal monthly installments after identity verification and affordability assessment. Spending limits are adjusted dynamically based on repayment history, while merchants receive payment upfront. Users can monitor installment schedules, receive reminders before due dates, and manage repayment methods through the mobile application. The platform also provides budgeting insights to encourage responsible financial behavior."
+},
+{
+"id": "p06",
+"product_type": "consumer_finance",
+"lang": "ar",
+"description": "يوفر المنتج تمويلاً إسلامياً بصيغة المرابحة لشراء الأجهزة المنزلية والإلكترونيات من متاجر سعودية معتمدة. يتم شراء السلعة من قبل جهة التمويل ثم بيعها للعميل بسعر معلوم يتضمن هامش ربح ثابت دون فوائد متغيرة. يمكن للعميل متابعة الأقساط، وسدادها مبكراً، واستعراض العقود والمستندات إلكترونياً. كما يتيح التطبيق التحقق الرقمي من الهوية وربط الحساب البنكي لتسهيل عمليات السداد مع توفير إشعارات دورية بجميع المستحقات."
+},
+{
+"id": "p07",
+"product_type": "consumer_finance",
+"lang": "ar",
+"description": "يساعد التطبيق المستخدمين على الحصول على تمويل شخصي صغير لتغطية النفقات الطارئة بعد تقييم الدخل والالتزامات المالية. يتم عرض قيمة التمويل والرسوم الإدارية وجدول السداد بشكل واضح قبل إتمام الطلب. كما يوفر أدوات لإدارة الميزانية، وتحليل الإنفاق الشهري، والتنبيه عند اقتراب مواعيد السداد، مع إمكانية السداد المبكر دون تعقيد وإدارة الطلب بالكامل من خلال الهاتف."
+},
+{
+"id": "p08",
+"product_type": "consumer_finance",
+"lang": "en",
+"description": "This BNPL platform approves customers within minutes and allows repayment over twelve months. However, overdue balances automatically accrue monthly interest charges that continue compounding until the outstanding amount is fully repaid. Marketing materials emphasize convenience but provide limited visibility into the total borrowing cost before checkout. The application targets Saudi online shoppers and integrates with local merchants, while repayment reminders are delivered through push notifications. This product intentionally represents a potentially non-compliant financing scenario for compliance testing."
+},
+{
+"id": "p09",
+"product_type": "open_banking",
+"lang": "ar",
+"description": "يوفر هذا التطبيق خدمات تجميع الحسابات البنكية من عدة بنوك سعودية عبر واجهات برمجة تطبيقات متوافقة مع مبادرات الخدمات المصرفية المفتوحة. بعد الحصول على موافقة المستخدم بشكل صريح، يتم عرض الأرصدة، والمعاملات، وتحليلات الإنفاق في لوحة تحكم واحدة. كما يقدم توصيات للادخار، وتنبيهات عند تجاوز الميزانية، وإمكانية مشاركة بيانات محددة مع تطبيقات مالية أخرى وفق المدة التي يختارها المستخدم."
+},
+{
+"id": "p10",
+"product_type": "open_banking",
+"lang": "en",
+"description": "The application connects to multiple Saudi banks through open banking APIs to provide consolidated account balances, categorized transactions, and personalized spending insights. Customers explicitly authorize data sharing for a selected duration and may revoke access at any time. Third-party budgeting tools can access only the permissions granted by the customer. Audit logs record every consent event and every API request, improving transparency for both consumers and financial institutions."
+},
+{
+"id": "p11",
+"product_type": "open_banking",
+"lang": "ar",
+"description": "يقوم هذا المنتج بجمع جميع بيانات الحسابات البنكية وسجل المعاملات ومعلومات الموقع الجغرافي للمستخدم بشكل تلقائي بمجرد تثبيت التطبيق، ثم يشارك البيانات مع شركاء تسويقيين دون طلب موافقة صريحة أو توفير وسيلة لإلغاء المشاركة. يستخدم هذه البيانات لتقديم عروض تجارية مخصصة وتحليلات سلوكية. تم تضمين هذا المثال عمداً كحالة اختبار غير متوافقة مع متطلبات الموافقة وحماية البيانات."
+},
+{
+"id": "p12",
+"product_type": "general",
+"lang": "ar",
+"description": "تساعد المنصة المستثمرين الأفراد على شراء وحدات استثمارية متوافقة مع الشريعة في محافظ متنوعة تشمل صكوكاً وأصولاً منخفضة المخاطر. توفر تقارير أداء دورية، وإمكانية الاستثمار الدوري بمبالغ صغيرة، وتحليلات للمخاطر، بالإضافة إلى واجهة تعليمية تشرح أساسيات الاستثمار الإسلامي وآلية توزيع الأرباح. تم تصميم الخدمة لتناسب المستخدمين الجدد وذوي الخبرة على حد سواء."
+},
+{
+"id": "p13",
+"product_type": "general",
+"lang": "en",
+"description": "This financial wellness platform helps Saudi users monitor spending habits, set savings goals, and receive personalized educational content. It does not hold customer funds but can import transaction summaries with permission from supported banking providers. Users receive monthly financial health scores, reminders about recurring expenses, and suggestions for building emergency savings. Small businesses can also use the dashboard to review operating expenses and cash flow trends."
+},
+{
+"id": "p14",
+"product_type": "general",
+"lang": "ar",
+"description": "يوفر التطبيق منصة لإدارة الفواتير الإلكترونية ومتابعة التدفقات النقدية للشركات الصغيرة العاملة في التجارة الإلكترونية السعودية. يمكن للمستخدم إصدار الفواتير، ومتابعة المدفوعات، وتحليل الإيرادات والمصروفات من خلال تقارير تفاعلية. كما يدعم التكامل مع أنظمة المحاسبة المختلفة ويتيح تصدير البيانات إلى ملفات مالية لاستخدامها في إعداد التقارير السنوية."
+},
+{
+"id": "p15",
+"product_type": "general",
+"lang": "en",
+"description": "Designed for fintech startups participating in a SAMA sandbox environment, this platform provides simulated payment processing, customer onboarding workflows, and compliance testing utilities. Developers can generate synthetic transactions, test fraud detection rules, and validate reporting pipelines before production deployment. Detailed audit logs and configurable scenarios help engineering and compliance teams evaluate operational readiness while minimizing risk."
+},
+{
+"id": "p16",
+"product_type": "general",
+"lang": "ar",
+"description": "تقدم المنصة خدمة إدارة الاشتراكات الشهرية للمستخدمين، حيث تقوم بتجميع جميع الاشتراكات في مكان واحد، وإرسال تنبيهات قبل موعد الخصم، واقتراح إلغاء الخدمات غير المستخدمة. كما توفر تحليلات توضح تطور الإنفاق الشهري، مع إمكانية تحديد حدود للميزانية ومتابعة الالتزام بها، مما يساعد المستخدم على تحسين إدارة مصروفاته."
+},
+{
+"id": "p17",
+"product_type": "consumer_finance",
+"lang": "ar",
+"description": "يتيح هذا المنتج الاستثمار في صكوك رقمية متوافقة مع الشريعة من خلال مبالغ استثمار صغيرة تناسب الأفراد. يمكن للمستخدم استعراض تفاصيل كل إصدار، والعوائد المتوقعة، والمخاطر المرتبطة به، وإعادة استثمار التوزيعات بشكل تلقائي. كما يوفر التطبيق تقارير دورية وسجل عمليات كامل مع واجهة سهلة الاستخدام ودعم للمستثمرين الجدد."
+},
+{
+"id": "p18",
+"product_type": "payment_services",
+"lang": "en",
+"description": "This cross-border payment solution enables Saudi exporters to receive payments from international buyers while settling funds into local bank accounts. Currency conversion rates are displayed before confirmation, and merchants can automate reconciliation through accounting integrations. The service supports bulk payouts, webhook notifications, and transaction tracking for finance departments handling international commerce."
+},
+{
+"id": "p19",
+"product_type": "open_banking",
+"lang": "en",
+"description": "This account aggregation platform allows customers to connect multiple Saudi bank accounts through standardized APIs. Users define granular permissions for each connected application, including read-only balances or transaction history. Consent expires automatically after the selected duration unless renewed by the customer. Financial planning applications can use the shared information to generate budgeting insights while respecting user-defined access controls."
+},
+{
+"id": "p20",
+"product_type": "general",
+"lang": "ar",
+"description": "تم تطوير هذا المنتج لدعم الشركات الناشئة في قطاع التقنية المالية داخل المملكة من خلال لوحة تحكم موحدة لإدارة العملاء، والتحقق من الهوية، ومراقبة المخاطر، وإعداد التقارير التشغيلية. كما يوفر أدوات لمحاكاة العمليات المالية واختبار سيناريوهات الامتثال قبل إطلاق الخدمات الفعلية، مع إمكانية التكامل مع أنظمة داخلية ومنصات التجارة الإلكترونية السعودية."
+}
+]

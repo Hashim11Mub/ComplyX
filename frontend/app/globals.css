@@ -54,17 +54,12 @@ button {
 }
 
 ::-webkit-scrollbar {
-  height: 9px;
-  width: 9px;
+  height: 0;
+  width: 0;
 }
 
-::-webkit-scrollbar-thumb {
-  background: #c4d6d5;
-  border-radius: 9px;
-}
-
-::-webkit-scrollbar-track {
-  background: transparent;
+* {
+  scrollbar-width: none;
 }
 
 @keyframes bgDrift {
@@ -491,7 +486,7 @@ button {
 .cx-trait-grid {
   display: grid;
   gap: 14px;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   margin: 0 auto;
   max-width: 1120px;
   padding: 0 34px 56px;
@@ -1997,6 +1992,10 @@ button {
   z-index: 60;
 }
 
+html[dir="rtl"] .cx-chat-drawer {
+  transform-origin: bottom left;
+}
+
 .cx-chat-drawer.is-open {
   opacity: 1;
   pointer-events: auto;
@@ -2193,7 +2192,7 @@ button {
   }
 
   .cx-trait-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: 1fr;
     padding: 0 24px 38px;
   }
 }

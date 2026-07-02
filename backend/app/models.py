@@ -40,6 +40,8 @@ class ComplianceResult(BaseModel):
 class CheckRequest(BaseModel):
     product_description: str
     product_type: ProductType
+    tone: str = "executive"  # simple | executive | technical
+    lang: str = "ar"         # ar | en
 
 
 class ChatMessage(BaseModel):

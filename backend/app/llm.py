@@ -8,11 +8,54 @@ import anthropic
 from .config import settings
 from .models import ComplianceResult, Finding, Requirement, ProductType
 
+# Enable LangSmith tracing when configured
+if settings.langchain_tracing_v2 and settings.langchain_api_key:
+    os.environ.setdefault("LANGCHAIN_TRACING_V2", "true")
+    os.environ.setdefault("LANGCHAIN_API_KEY", settings.langchain_api_key)
+    os.environ.setdefault("LANGCHAIN_PROJECT", settings.langchain_project)
+
+try:
+    from langsmith import traceable as _traceable
+    _LANGSMITH_AVAILABLE = True
+except ImportError:
+    _LANGSMITH_AVAILABLE = False
+    def _traceable(name=None, **kwargs):  # type: ignore[misc]
+        def decorator(fn):
+            return fn
+        return decorator
+
 MODEL = "claude-sonnet-4-6"
 
-AGENT_STEPS = ["استرجاع الأنظمة", "استخلاص الاشتراطات", "فحص الثغرات", "توليد التقرير"]
+AGENT_STEPS_AR = [
+    "استخراج نطاق المنتج",
+    "البحث في قاعدة اللوائح",
+    "تحليل متطلبات الامتثال",
+    "إعداد تقرير النتائج",
+]
+AGENT_STEPS_EN = [
+    "Extracting product scope",
+    "Searching regulation database",
+    "Analysing compliance requirements",
+    "Compiling findings report",
+]
 
-DISCLAIMER = "هذا تقرير تحليلي مبني على وثائق ساما المتاحة للعموم ولا يُعدّ رأياً قانونياً نهائياً."
+DISCLAIMER_AR = "هذا تقرير تحليلي مبني على وثائق تنظيمية متاحة للعموم ولا يُعدّ رأياً قانونياً نهائياً."
+DISCLAIMER_EN = "This is an analytical report based on publicly available regulatory documents and does not constitute final legal advice."
+
+_TONE_INSTRUCTION = {
+    "simple": {
+        "ar": "اكتب التحليلات والتوصيات بلغة مبسطة تناسب القارئ غير المتخصص، بجمل قصيرة وواضحة.",
+        "en": "Write analyses and recommendations in plain language suitable for a non-specialist reader, using short clear sentences.",
+    },
+    "executive": {
+        "ar": "اكتب التحليلات والتوصيات بأسلوب تنفيذي يركز على الأثر التجاري والقرارات المطلوبة.",
+        "en": "Write analyses and recommendations in an executive style focused on business impact and required decisions.",
+    },
+    "technical": {
+        "ar": "اكتب التحليلات والتوصيات بأسلوب تقني مفصل يتضمن المرجع التنظيمي الدقيق والإجراءات المحددة.",
+        "en": "Write analyses and recommendations in detailed technical style including precise regulatory references and specific procedures.",
+    },
+}
 
 COMPLIANCE_TOOL = {
     "name": "submit_compliance_report",
@@ -50,7 +93,7 @@ COMPLIANCE_TOOL = {
                         "req_id": {"type": "string", "description": "Unique slug e.g. 'consumer-finance-disclosure'"},
                         "req_source": {"type": "string", "description": "Exact regulation name as it appears in the context — must match one of the provided source names verbatim"},
                         "req_article": {"type": "string", "description": "Article number/name exactly as shown in the context (e.g. 'القاعدة 17' or 'المادة 33')"},
-                        "req_title": {"type": "string", "description": "Requirement title in Arabic"},
+                        "req_title": {"type": "string", "description": "Requirement title — in Arabic when responding in Arabic, translated to English when responding in English"},
                         "req_text": {"type": "string", "description": "Exact article text from the regulation"},
                         "req_keywords": {
                             "type": "array",
@@ -94,17 +137,40 @@ def _build_context(chunks: list[dict]) -> tuple[str, list[str]]:
     return "\n\n---\n\n".join(parts), regulation_names
 
 
+@_traceable(name="analyze_compliance")
 def analyze_compliance(
     product_description: str,
     product_type: ProductType,
     retrieved_chunks: list[dict],
+    tone: str = "executive",
+    lang: str = "ar",
 ) -> ComplianceResult:
     client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
 
     regulatory_context, regulation_names = _build_context(retrieved_chunks)
     names_list = "\n".join(f"- {n}" for n in regulation_names)
 
-    system_prompt = f"""أنت محلل امتثال تنظيمي متخصص في أنظمة هيئة السوق المالية السعودية (ساما) ومعايير الشريعة الإسلامية.
+    tone_key = tone if tone in _TONE_INSTRUCTION else "executive"
+    lang_key = lang if lang in ("ar", "en") else "ar"
+    tone_instruction = _TONE_INSTRUCTION[tone_key][lang_key]
+
+    if lang_key == "en":
+        system_prompt = f"""You are a regulatory compliance analyst specialising in Saudi Arabian financial regulations and Islamic finance standards.
+
+Your task: analyse the submitted financial product description and assess its compliance against the retrieved regulatory articles.
+
+Strict rules — no exceptions:
+- Only produce findings for articles numbered [1] to [{len(retrieved_chunks)}] present in the regulatory context below
+- Do not add any article or regulation from outside this context, even if you know it
+- req_source must be verbatim one of these sources only:
+{names_list}
+- {tone_instruction}
+- Compliance score: 82-100 = low risk, 58-81 = medium risk, below 58 = high risk
+- Write req_title in English (translate from the Arabic regulation title)
+- Write req_text in Arabic as it appears verbatim in the regulation
+- Write analysis and recommendation in English"""
+    else:
+        system_prompt = f"""أنت محلل امتثال تنظيمي متخصص في الأنظمة المالية السعودية ومعايير التمويل الإسلامي.
 
 مهمتك: تحليل وصف المنتج المالي المقدم وتقييم مدى امتثاله للمواد التنظيمية المستردة.
 
@@ -113,23 +179,34 @@ def analyze_compliance(
 - لا تُضف أي مادة أو نظام من خارج هذا السياق ولو كنت تعرفه
 - قيمة req_source يجب أن تكون حرفياً إحدى المصادر التالية فقط:
 {names_list}
-- استخدم اللغة العربية الفصحى في جميع النصوص
+- {tone_instruction}
 - كن محدداً في التحليل والتوصيات
 - نسبة الامتثال: 82-100 = مخاطر منخفضة، 58-81 = مخاطر متوسطة، أقل من 58 = مخاطر عالية"""
 
-    user_message = f"""نوع المنتج: {product_type}
+    if lang_key == "en":
+        user_message = f"""Product type: {product_type}
+
+Financial product description:
+{product_description}
+
+Retrieved regulatory articles:
+{regulatory_context}
+
+Analyse this product against the regulatory articles provided and submit the compliance report."""
+    else:
+        user_message = f"""نوع المنتج: {product_type}
 
 وصف المنتج المالي:
 {product_description}
 
-المواد التنظيمية المسترجعة من منظومة أنظمة ساما:
+المواد التنظيمية المسترجعة:
 {regulatory_context}
 
 حلل هذا المنتج مقابل المواد التنظيمية المقدمة وقدم تقرير الامتثال."""
 
     response = client.messages.create(
         model=MODEL,
-        max_tokens=4096,
+        max_tokens=8192,
         temperature=0,
         system=system_prompt,
         messages=[{"role": "user", "content": user_message}],
@@ -137,7 +214,6 @@ def analyze_compliance(
         tool_choice={"type": "any"},
     )
 
-    # Extract tool_use block
     tool_result = next(
         (block for block in response.content if block.type == "tool_use"),
         None,
@@ -146,6 +222,13 @@ def analyze_compliance(
         raise ValueError("Claude did not call the compliance report tool")
 
     data = tool_result.input
+    if "findings" not in data:
+        import json as _json
+        raise ValueError(
+            f"Tool response missing 'findings'. Stop reason: {response.stop_reason}. "
+            f"Keys present: {list(data.keys())}. "
+            f"Partial data: {_json.dumps(data, ensure_ascii=False)[:600]}"
+        )
     findings = [
         Finding(
             requirement=Requirement(
@@ -164,6 +247,9 @@ def analyze_compliance(
         for f in data["findings"]
     ]
 
+    agent_steps = AGENT_STEPS_EN if lang_key == "en" else AGENT_STEPS_AR
+    disclaimer = DISCLAIMER_EN if lang_key == "en" else DISCLAIMER_AR
+
     return ComplianceResult(
         product_type=product_type,
         compliance_score=data["compliance_score"],
@@ -171,8 +257,8 @@ def analyze_compliance(
         gaps_count=data["gaps_count"],
         findings=findings,
         executive_summary=data["executive_summary"],
-        agent_steps=AGENT_STEPS,
-        disclaimer=DISCLAIMER,
+        agent_steps=agent_steps,
+        disclaimer=disclaimer,
     )
 
 

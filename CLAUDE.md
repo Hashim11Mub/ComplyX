@@ -165,10 +165,12 @@ git push
 Never `git add .` or `git add -A` — always be specific about which files to stage.
 Never commit `.env`, `backend/data/regulations/*.pdf`, or `frontend/.env.local`.
 
-## SAMA Regulations — Data Sources
+## Regulation Data Sources
 
-Primary source: https://rulebook.sama.gov.sa (English PDFs, publicly available)
-8 PDFs currently in `backend/data/regulations/` (not in git — large files):
+All PDFs live in `backend/data/regulations/` (not in git — large files). After adding new PDFs, re-run `python -m app.ingest --dir data/regulations` to re-index.
+
+**SAMA (Saudi Central Bank)** — https://rulebook.sama.gov.sa (English PDFs, publicly available)
+8 PDFs currently indexed (618 chunks):
 - `All_Financial_Institutions_SAMA_Rulebook.pdf`
 - `Banking_Sector_SAMA_Rulebook.pdf`
 - `Credit_Bureaus_SAMA_Rulebook.pdf`
@@ -177,6 +179,16 @@ Primary source: https://rulebook.sama.gov.sa (English PDFs, publicly available)
 - `Money_Exchange_Sector_SAMA_Rulebook.pdf`
 - `Payment_Systems_and_Payment_Services_Providers_SAMA_Rulebook.pdf`
 - `Regulatory_Sandbox_SAMA_Rulebook.pdf`
+
+**SDAIA (Personal Data Protection)** — https://sdaia.gov.sa — PDFs to be added (not yet indexed):
+- `PDPL_Personal_Data_Protection_Law.pdf` — The articles of the PDPL
+- `PDPL_Implementing_Regulation.pdf` — Implementing Regulation of the PDPL
+- `PDPL_Cross_Border_Transfer_Regulation.pdf` — Regulation on Personal Data Transfer Outside the Kingdom
+
+**AAOIFI (Shariah Standards)** — PDFs to be added (not yet indexed):
+- `AAOIFI_Shariah_Standards.pdf` — AAOIFI Shariah Standards for Islamic finance products
+
+**After adding new PDFs:** Re-run ingest. The chunk count will increase. Update the startup health check expected count in `backend/app/main.py` if you hardcoded it anywhere.
 
 ## Quality Targets (do not ship without meeting)
 

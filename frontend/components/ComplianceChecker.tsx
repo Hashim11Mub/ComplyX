@@ -1,14 +1,13 @@
 "use client";
 
 import { ChangeEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
+import { checkCompliance } from "@/lib/api";
+import type { ComplianceResult, ProductType as BackendProductType } from "@/lib/types";
 
 type Lang = "ar" | "en";
 type Mode = "describe" | "upload" | "voice";
 type AppState = "input" | "scanning" | "results";
 type Complexity = "simple" | "executive" | "technical";
-type FindingStatus = "gap" | "needs_review" | "compliant";
-type SectionTone = "gap" | "review" | "ok";
-
 type Product = {
   id: string;
   en: string;
@@ -33,23 +32,6 @@ type StepDef = {
   done: { en: string; ar: string };
 };
 
-type SectionDef = {
-  article: string;
-  articleEn: string;
-  ar: string;
-  en: string;
-  tone: SectionTone;
-};
-
-type Finding = {
-  id: string;
-  status: FindingStatus;
-  article: string;
-  title: string;
-  analysis: Record<Complexity, string>;
-  recommendation: Record<Complexity, string>;
-};
-
 type UploadedFile = {
   name: string;
   meta: string;
@@ -61,9 +43,16 @@ type ChatMessage = {
   text: string;
 };
 
-const SCORE = 47;
-const RISK: "high" | "medium" | "low" = "high";
 const CIRCUMFERENCE = 2 * Math.PI * 100;
+
+const PRODUCT_TYPE_MAP: Record<string, BackendProductType> = {
+  wallet: "payment_services",
+  bnpl: "consumer_finance",
+  gateway: "payment_services",
+  robo: "general",
+  api: "open_banking",
+  crypto: "general"
+};
 
 const PRODUCT_TYPES: Product[] = [
   { id: "wallet", en: "Digital Wallet", ar: "محفظة رقمية", icon: "wallet" },
@@ -106,148 +95,40 @@ const SAMPLE_VOICE =
 
 const STEP_DEFS: StepDef[] = [
   {
-    en: "Parsing product scope",
-    ar: "تحليل نطاق المنتج",
+    en: "Extracting product scope",
+    ar: "استخراج نطاق المنتج",
     icon: "doc",
     active: { en: "Reading product description...", ar: "قراءة وصف المنتج..." },
-    done: { en: "6 functional entities identified", ar: "تحديد 6 وظائف رئيسية" }
+    done: { en: "Scope identified", ar: "تحديد النطاق" }
   },
   {
-    en: "Cross-referencing SAMA articles",
-    ar: "مطابقة مواد ساما التنظيمية",
+    en: "Searching regulation database",
+    ar: "البحث في قاعدة اللوائح",
     icon: "scale",
-    active: { en: "Matching against 143 articles...", ar: "المطابقة مع 143 مادة نظامية..." },
-    done: { en: "3 highly-relevant articles", ar: "9 مواد وثيقة الصلة" }
+    active: { en: "Running semantic search...", ar: "بحث دلالي جارٍ..." },
+    done: { en: "Relevant articles retrieved", ar: "استرداد المواد ذات الصلة" }
   },
   {
-    en: "Verifying KYC & data residency",
-    ar: "فحص الهوية وإقامة البيانات",
+    en: "Analysing compliance requirements",
+    ar: "تحليل متطلبات الامتثال",
     icon: "shield",
-    active: { en: "Checking e-KYC & data rules...", ar: "فحص e-KYC وإقامة البيانات..." },
-    done: { en: "2 potential gaps flagged", ar: "رصد فجوتين محتملتين" }
+    active: { en: "Checking requirements...", ar: "فحص الاشتراطات..." },
+    done: { en: "Gaps identified", ar: "رصد الثغرات" }
   },
   {
-    en: "Assessing risk exposure",
-    ar: "تقييم درجة المخاطر",
-    icon: "gauge",
-    active: { en: "Scoring risk exposure...", ar: "حساب درجة المخاطر..." },
-    done: { en: "Risk level: High", ar: "المخاطر: مرتفعة" }
-  },
-  {
-    en: "Compiling findings",
-    ar: "تجميع النتائج",
+    en: "Compiling findings report",
+    ar: "إعداد تقرير النتائج",
     icon: "list",
-    active: { en: "Preparing the report...", ar: "تجهيز التقرير..." },
+    active: { en: "Preparing report...", ar: "تجهيز التقرير..." },
     done: { en: "Report ready", ar: "التقرير جاهز" }
   }
 ];
 
-const SECTIONS: SectionDef[] = [
-  { article: "المادة 7", articleEn: "Art. 7", ar: "التحقق الرقمي من الهوية", en: "Digital identity (e-KYC)", tone: "gap" },
-  { article: "المادة 12", articleEn: "Art. 12", ar: "إقامة البيانات وحمايتها", en: "Data residency & protection", tone: "gap" },
-  { article: "المادة 5", articleEn: "Art. 5", ar: "حدود المعاملات اليومية", en: "Daily transaction limits", tone: "review" },
-  { article: "المادة 3", articleEn: "Art. 3", ar: "كفاية رأس المال", en: "Capital adequacy", tone: "ok" },
-  { article: "المادة 9", articleEn: "Art. 9", ar: "الإفصاح عن الرسوم", en: "Fee disclosure", tone: "ok" },
-  { article: "المادة 18", articleEn: "Art. 18", ar: "ضوابط مكافحة غسل الأموال", en: "AML controls", tone: "review" },
-  { article: "المادة 22", articleEn: "Art. 22", ar: "متطلبات الأمن السيبراني", en: "Cybersecurity requirements", tone: "ok" },
-  { article: "المادة 14", articleEn: "Art. 14", ar: "حماية المستهلك المالي", en: "Consumer protection", tone: "ok" },
-  { article: "المادة 31", articleEn: "Art. 31", ar: "التقارير الرقابية الدورية", en: "Periodic regulatory reporting", tone: "ok" }
-];
 
-const FINDINGS: Finding[] = [
-  {
-    id: "f1",
-    status: "gap",
-    article: "المادة 7",
-    title: "غياب إجراءات التحقق الرقمي من هوية العميل (e-KYC)",
-    analysis: {
-      simple: "المنتج لا يتأكد من هوية العميل إلكترونياً قبل فتح الحساب، وهذا مطلوب نظاماً في السعودية.",
-      executive: "لا يتضمن الوصف آلية تحقق رقمي (e-KYC) معتمدة من ساما، ما يعرّض طلب الترخيص للرفض ويشكّل مخاطرة امتثال عالية عند الإطلاق.",
-      technical: "يفتقر المنتج إلى تدفق e-KYC وفق معايير ساما (تحقق بيومتري ومطابقة الهوية الوطنية عبر منصتي أبشر/يقين) قبل تفعيل الحساب، بما يخالف متطلبات لائحة مكافحة غسل الأموال، المادة 7."
-    },
-    recommendation: {
-      simple: "أضف خطوة للتحقق من هوية العميل إلكترونياً قبل تفعيل أي حساب.",
-      executive: "دمج مزود e-KYC معتمد من ساما قبل الإطلاق لإغلاق الفجوة وتسريع الترخيص.",
-      technical: "التكامل مع منصة يقين/أبشر للتحقق البيومتري ومطابقة الهوية الوطنية، مع تسجيل سجلات التدقيق والاحتفاظ بها خمس سنوات."
-    }
-  },
-  {
-    id: "f2",
-    status: "gap",
-    article: "المادة 12",
-    title: "عدم وضوح آلية تخزين بيانات العملاء محليًا",
-    analysis: {
-      simple: "غير واضح إن كانت بيانات العملاء ستُحفظ داخل السعودية، وهذا شرط أساسي.",
-      executive: "لا يوضح الوصف موقع تخزين البيانات؛ التخزين خارج المملكة يوقف الترخيص، ويجب تأكيد الاستضافة المحلية.",
-      technical: "لا يحدد الوصف إقامة البيانات (data residency)؛ تُلزم لائحة حماية البيانات باستضافة بيانات العملاء داخل مراكز بيانات معتمدة في المملكة مع التشفير أثناء النقل والتخزين."
-    },
-    recommendation: {
-      simple: "احفظ جميع بيانات العملاء داخل السعودية.",
-      executive: "تأكيد استضافة البيانات داخل المملكة في مراكز معتمدة قبل التقديم.",
-      technical: "ترحيل البيانات إلى مركز بيانات معتمد داخل المملكة، وتفعيل تشفير AES-256 وضوابط الوصول، وتوثيق سياسة الاحتفاظ."
-    }
-  },
-  {
-    id: "f3",
-    status: "needs_review",
-    article: "المادة 5",
-    title: "حدود المعاملات اليومية تحتاج مراجعة",
-    analysis: {
-      simple: "حدود المعاملات اليومية قريبة من الحد الأقصى وتحتاج إلى مراجعة.",
-      executive: "الحدود المقترحة قد تنقل المنتج إلى فئة ترخيص أعلى؛ يوصى بمراجعة التصنيف مع ساما.",
-      technical: "تقترب الحدود اليومية المقترحة من سقف محافظ الفئة الثانية، وقد تستوجب ترخيص فئة أعلى وضوابط رقابة معاملات إضافية."
-    },
-    recommendation: {
-      simple: "راجع الحدود مع ساما قبل الإطلاق.",
-      executive: "تأكيد الفئة التنظيمية المناسبة مع فريق التراخيص في ساما.",
-      technical: "مواءمة الحدود مع الفئة المرخصة أو التقدم لترخيص أعلى مع ضوابط AML للمعاملات عالية القيمة."
-    }
-  },
-  {
-    id: "f4",
-    status: "compliant",
-    article: "المادة 3",
-    title: "متطلبات رأس المال المؤسسي مستوفاة",
-    analysis: {
-      simple: "رأس المال كافٍ ومطابق للمطلوب.",
-      executive: "رأس المال المعلن يتجاوز الحد الأدنى المطلوب للترخيص.",
-      technical: "رأس المال المدفوع يتجاوز الحد الأدنى النظامي لمزودي خدمات الدفع من الفئة المعنية."
-    },
-    recommendation: {
-      simple: "لا حاجة لإجراء إضافي.",
-      executive: "لا حاجة لإجراء إضافي في هذا البند.",
-      technical: "لا حاجة لإجراء إضافي؛ يُستحسن توثيق شهادة رأس المال ضمن ملف الترخيص."
-    }
-  },
-  {
-    id: "f5",
-    status: "compliant",
-    article: "المادة 9",
-    title: "سياسة الإفصاح عن الرسوم واضحة",
-    analysis: {
-      simple: "الرسوم موضّحة بشكل جيد للعميل.",
-      executive: "سياسة الإفصاح عن الرسوم متوافقة مع متطلبات الشفافية لدى ساما.",
-      technical: "يستوفي الإفصاح عن الرسوم والعمولات متطلبات الشفافية وحماية العميل المنصوص عليها لدى ساما."
-    },
-    recommendation: {
-      simple: "لا حاجة لإجراء إضافي.",
-      executive: "لا حاجة لإجراء إضافي في هذا البند.",
-      technical: "لا حاجة لإجراء إضافي؛ يُوصى بمراجعة جدول الرسوم سنوياً."
-    }
-  }
-];
-
-const EXEC_SUMMARY: Record<Complexity, string> = {
-  simple:
-    "منتجك قريب من الجاهزية، لكن ينقصه أمران مهمان: التأكد من هوية العميل إلكترونياً، وحفظ البيانات داخل السعودية. بعد معالجتهما يصبح جاهزاً للتقديم.",
-  executive:
-    "يُظهر التحليل توافقاً جزئياً مع لوائح ساما. الفجوات الحرجة تتعلق بغياب التحقق الرقمي من الهوية وعدم وضوح موقع تخزين البيانات، وكلاهما شرط للترخيص. يوصى بمعالجتهما قبل التقديم الرسمي.",
-  technical:
-    "يكشف الفحص عن فجوتين حرجتين: غياب تدفق e-KYC المعتمد (المادة 7) وعدم تحديد إقامة البيانات محلياً (المادة 12)، إضافة إلى بند يحتاج مراجعة حول حدود المعاملات (المادة 5). بنود رأس المال والإفصاح مستوفاة. يلزم إغلاق الفجوتين الحرجتين قبل التقدم للترخيص."
-};
-
-const CANNED_REPLY =
-  "بخصوص سؤالك: تشير المادة 7 من لائحة مكافحة غسل الأموال إلى ضرورة التحقق الرقمي من هوية العميل (e-KYC) قبل تفعيل الحساب. يمكن إغلاق هذه الفجوة بدمج مزود KYC معتمد من ساما يوفر التحقق البيومتري ومطابقة الهوية الوطنية.";
+const CANNED_REPLY_AR =
+  "بخصوص سؤالك: يمكنني مساعدتك في فهم نتائج الفحص أو أي مادة تنظيمية محددة. اسألني عن أي بند من نتائج التقرير وسأشرحه لك بالتفصيل.";
+const CANNED_REPLY_EN =
+  "Regarding your question: I can help you understand the scan findings or any specific regulatory article. Ask me about any item in the report and I will explain it in detail.";
 
 export default function ComplianceChecker() {
   const [lang, setLang] = useState<Lang>("ar");
@@ -260,8 +141,11 @@ export default function ComplianceChecker() {
   const [transcript, setTranscript] = useState("");
   const [complexity, setComplexity] = useState<Complexity>("executive");
   const [activeStep, setActiveStep] = useState(0);
-  const [doneFlags, setDoneFlags] = useState([false, false, false, false, false]);
+  const [doneFlags, setDoneFlags] = useState([false, false, false, false]);
   const [revealedCount, setRevealedCount] = useState(0);
+  const [complianceResult, setComplianceResult] = useState<ComplianceResult | null>(null);
+  const [scanError, setScanError] = useState<string | null>(null);
+  const [isRefetching, setIsRefetching] = useState(false);
   const [dialOffset, setDialOffset] = useState(CIRCUMFERENCE);
   const [dialDisplay, setDialDisplay] = useState(0);
   const [expandedFindingId, setExpandedFindingId] = useState<string | null>(null);
@@ -278,6 +162,8 @@ export default function ComplianceChecker() {
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const rafRef = useRef<number | null>(null);
   const scrollRafRef = useRef<number | null>(null);
+  const apiResultRef = useRef<ComplianceResult | null>(null);
+  const animationFinishedRef = useRef(false);
 
   const isAr = lang === "ar";
   const dirAttr = isAr ? "rtl" : "ltr";
@@ -388,61 +274,87 @@ export default function ComplianceChecker() {
   function startScan() {
     if (!canScan) return;
     clearTimers();
+    apiResultRef.current = null;
+    animationFinishedRef.current = false;
     setAppState("scanning");
     setActiveStep(0);
-    setDoneFlags([false, false, false, false, false]);
+    setDoneFlags([false, false, false, false]);
     setRevealedCount(0);
+    setScanError(null);
+    setComplianceResult(null);
     const scrollTimer = setTimeout(() => scrollToId("scan"), 80);
     timers.current.push(scrollTimer);
 
+    const productType: BackendProductType = selectedProduct ? (PRODUCT_TYPE_MAP[selectedProduct] ?? "general") : "general";
+
+    checkCompliance(effectiveDesc(), productType, complexity, lang).then((result) => {
+      apiResultRef.current = result;
+      if (animationFinishedRef.current) finishScan(result);
+    }).catch(() => {
+      setScanError(isAr ? "تعذر الاتصال بالخادم. تأكد من تشغيل الواجهة الخلفية." : "Could not reach the backend. Make sure it is running.");
+      setAppState("input");
+    });
+
     const stepDuration = 950;
-    for (let index = 0; index < 5; index += 1) {
+    for (let index = 0; index < 4; index += 1) {
       const timer = setTimeout(() => {
         setDoneFlags((current) => {
           const next = [...current];
           next[index] = true;
           return next;
         });
-        if (index < 4) setActiveStep(index + 1);
-        if (index === 4) {
-          const finishTimer = setTimeout(finishScan, 600);
-          timers.current.push(finishTimer);
+        if (index < 3) setActiveStep(index + 1);
+        if (index === 3) {
+          const waitTimer = setTimeout(() => {
+            animationFinishedRef.current = true;
+            if (apiResultRef.current) {
+              finishScan(apiResultRef.current);
+            }
+          }, 600);
+          timers.current.push(waitTimer);
         }
       }, stepDuration * (index + 1));
       timers.current.push(timer);
     }
 
-    for (let index = 1; index <= SECTIONS.length; index += 1) {
-      const revealTimer = setTimeout(() => setRevealedCount(index), 430 * index + 260);
+    for (let index = 1; index <= 6; index += 1) {
+      const revealTimer = setTimeout(() => setRevealedCount(index), 280 * index + 150);
       timers.current.push(revealTimer);
     }
   }
 
-  function finishScan() {
+  function finishScan(result: ComplianceResult) {
     const ref = `CX-2026-${Math.floor(10000 + Math.random() * 89999)}`;
-    setAppState("results");
-    setRefNumber(ref);
-    setExpiryTs(Date.now() + 90 * 86_400_000);
-    setDialOffset(CIRCUMFERENCE);
-    setDialDisplay(0);
-    setRevealedCount(SECTIONS.length);
-    const scrollTimer = setTimeout(() => scrollToId("report"), 90);
-    timers.current.push(scrollTimer);
-    const target = CIRCUMFERENCE * (1 - SCORE / 100);
-    const dialTimer = setTimeout(() => {
-      setDialOffset(target);
-      startCountUp();
-    }, 450);
-    timers.current.push(dialTimer);
+    // Fill slots with real finding data immediately so user can read them
+    setComplianceResult(result);
+    setRevealedCount(6);
+    // Hold on the scan view for 2.5s so the real articles are readable, then transition
+    const transitionTimer = setTimeout(() => {
+      setAppState("results");
+      setRefNumber(ref);
+      setExpiryTs(Date.now() + 90 * 86_400_000);
+      setDialOffset(CIRCUMFERENCE);
+      setDialDisplay(0);
+      const scrollTimer = setTimeout(() => scrollToId("report"), 90);
+      timers.current.push(scrollTimer);
+      const target = CIRCUMFERENCE * (1 - result.compliance_score / 100);
+      const finalScore = result.compliance_score;
+      const dialTimer = setTimeout(() => {
+        setDialOffset(target);
+        startCountUp(finalScore);
+      }, 450);
+      timers.current.push(dialTimer);
+    }, 2500);
+    timers.current.push(transitionTimer);
   }
 
-  function startCountUp() {
+  function startCountUp(targetScore: number) {
     const duration = 1200;
     const start = performance.now();
     const step = (now: number) => {
       const progress = Math.min(1, (now - start) / duration);
       const eased = 1 - Math.pow(1 - progress, 3);
-      setDialDisplay(Math.round(eased * SCORE));
+      setDialDisplay(Math.round(eased * targetScore));
       if (progress < 1) rafRef.current = requestAnimationFrame(step);
     };
     rafRef.current = requestAnimationFrame(step);
@@ -451,15 +363,37 @@ export default function ComplianceChecker() {
   function resetToInput() {
     clearTimers();
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    apiResultRef.current = null;
+    animationFinishedRef.current = false;
     setAppState("input");
     setActiveStep(0);
-    setDoneFlags([false, false, false, false, false]);
+    setDoneFlags([false, false, false, false]);
     setRevealedCount(0);
     setDialOffset(CIRCUMFERENCE);
     setDialDisplay(0);
     setExpandedFindingId(null);
+    setComplianceResult(null);
+    setScanError(null);
     const timer = setTimeout(() => scrollToId("input"), 80);
     timers.current.push(timer);
+  }
+
+  async function handleComplexityChange(newComplexity: Complexity) {
+    setComplexity(newComplexity);
+    if (!complianceResult) return;
+    const productType: BackendProductType = selectedProduct ? (PRODUCT_TYPE_MAP[selectedProduct] ?? "general") : "general";
+    setIsRefetching(true);
+    try {
+      const result = await checkCompliance(effectiveDesc(), productType, newComplexity, lang);
+      setComplianceResult(result);
+      const target = CIRCUMFERENCE * (1 - result.compliance_score / 100);
+      setDialOffset(target);
+      setDialDisplay(result.compliance_score);
+    } catch {
+      // keep existing result on error
+    } finally {
+      setIsRefetching(false);
+    }
   }
 
   function sendChat() {
@@ -470,7 +404,8 @@ export default function ComplianceChecker() {
     setChatInputValue("");
     setChatTyping(true);
     const timer = setTimeout(() => {
-      setChatMessages((current) => [...current, { id: Date.now() + 1, fromUser: false, text: CANNED_REPLY }]);
+      const reply = isAr ? CANNED_REPLY_AR : CANNED_REPLY_EN;
+      setChatMessages((current) => [...current, { id: Date.now() + 1, fromUser: false, text: reply }]);
       setChatTyping(false);
     }, 1300);
     timers.current.push(timer);
@@ -481,19 +416,22 @@ export default function ComplianceChecker() {
   }
 
   function downloadReport() {
+    if (!complianceResult) return;
+    const recLabel = isAr ? "التوصية" : "Recommendation";
     const lines = [
-      "ComplyX — SAMA Compliance Report",
-      `Ref: ${refNumber}   Score: ${SCORE}/100   Risk: ${RISK.toUpperCase()}`,
-      `Detail level: ${complexity}`,
+      isAr ? "ComplyX - تقرير فحص الامتثال" : "ComplyX - Compliance Report",
+      `Ref: ${refNumber}   Score: ${complianceResult.compliance_score}/100   Risk: ${complianceResult.risk_level.toUpperCase()}`,
+      `${isAr ? "مستوى الشرح" : "Detail level"}: ${complexity}`,
       "",
-      EXEC_SUMMARY[complexity],
+      complianceResult.executive_summary,
       "",
-      ...FINDINGS.flatMap((finding) => [
-        `[${finding.status.toUpperCase()}] ${finding.article} — ${finding.title}`,
-        finding.analysis[complexity],
-        `التوصية: ${finding.recommendation[complexity]}`,
+      ...complianceResult.findings.flatMap((finding) => [
+        `[${finding.status.toUpperCase()}] ${finding.requirement.article}: ${finding.requirement.title}`,
+        finding.analysis,
+        `${recLabel}: ${finding.recommendation}`,
         ""
-      ])
+      ]),
+      complianceResult.disclaimer
     ];
     const blob = new Blob([lines.join("\n")], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
@@ -509,20 +447,14 @@ export default function ComplianceChecker() {
   const traits = [
     {
       key: "match",
-      title: t("Instant SAMA matching", "مطابقة فورية مع ساما"),
-      body: t("Every claim cross-checked against live SAMA regulation.", "يُقارَن وصف منتجك بلوائح ساما التنظيمية لحظياً."),
+      title: t("Instant regulatory matching", "مطابقة فورية مع اللوائح"),
+      body: t("Every claim cross-checked against live KSA financial regulations.", "يُقارَن وصف منتجك باللوائح المالية السعودية لحظياً."),
       icon: "match"
-    },
-    {
-      key: "cite",
-      title: t("Exact article citations", "استشهاد دقيق بالمواد"),
-      body: t("Findings pinned to the precise regulatory article.", "كل ملاحظة مربوطة بالمادة النظامية المعنية."),
-      icon: "cite"
     },
     {
       key: "score",
       title: t("Score & risk in seconds", "درجة ومخاطر خلال ثوانٍ"),
-      body: t("A 0–100 compliance score and clear risk level.", "درجة امتثال من 0 إلى 100 مع مستوى مخاطر واضح."),
+      body: t("A 0-100 compliance score and clear risk level.", "درجة امتثال من 0 إلى 100 مع مستوى مخاطر واضح."),
       icon: "score"
     },
     {
@@ -546,25 +478,31 @@ export default function ComplianceChecker() {
   ];
 
   const currentComplexityCaption = complexityDefs.find((item) => item.id === complexity)?.caption ?? complexityDefs[1].caption;
-  const dialColor = SCORE >= 82 ? "#147a5b" : SCORE >= 58 ? "#a15c09" : "#b42318";
-  const riskColor = RISK === "high" ? "#b42318" : RISK === "medium" ? "#a15c09" : "#147a5b";
-  const riskValueLabel = RISK === "high" ? t("High", "مرتفع") : RISK === "medium" ? t("Medium", "متوسط") : t("Low", "منخفض");
-  const gapCount = FINDINGS.filter((finding) => finding.status === "gap").length;
-  const reviewCount = FINDINGS.filter((finding) => finding.status === "needs_review").length;
-  const rc = Math.min(revealedCount, SECTIONS.length);
-  const nextSlot = appState === "scanning" && rc < SECTIONS.length ? rc % 6 : -1;
+  const score = complianceResult?.compliance_score ?? 0;
+  const risk = complianceResult?.risk_level ?? "high";
+  const dialColor = score >= 82 ? "#147a5b" : score >= 58 ? "#a15c09" : "#b42318";
+  const riskColor = risk === "high" ? "#b42318" : risk === "medium" ? "#a15c09" : "#147a5b";
+  const riskValueLabel = risk === "high" ? t("High", "مرتفع") : risk === "medium" ? t("Medium", "متوسط") : t("Low", "منخفض");
+  const gapCount = complianceResult?.gaps_count ?? 0;
+  const reviewCount = complianceResult?.findings.filter((f) => f.status === "needs_review").length ?? 0;
+  const rc = Math.min(revealedCount, 6);
+  const nextSlot = appState === "scanning" && rc < 6 ? rc : -1;
   const expiryDate = expiryTs
     ? new Date(expiryTs).toLocaleDateString(isAr ? "ar-SA" : "en-GB", { day: "numeric", month: "short", year: "numeric" })
     : "";
-  const sectionSlots = [0, 1, 2, 3, 4, 5].map((slotIndex) => {
-    let sectionIndex = -1;
-    for (let index = slotIndex; index < rc; index += 6) sectionIndex = index;
-    const section = sectionIndex >= 0 ? SECTIONS[sectionIndex] : null;
-    const isNext = slotIndex === nextSlot;
-    const occurrence = sectionIndex >= 0 ? Math.round((sectionIndex - slotIndex) / 6) : 0;
-    const dot = section?.tone === "gap" ? "#ff9a8f" : section?.tone === "review" ? "#f3d08a" : "#8fe8df";
-    const halo = section?.tone === "gap" ? "rgba(255,154,143,0.2)" : section?.tone === "review" ? "rgba(243,208,138,0.2)" : "rgba(143,232,223,0.2)";
-    return { section, isNext, occurrence, dot, halo };
+  // When results are in, use actual finding count; during scan show 6 shimmer slots
+  const slotCount = complianceResult ? complianceResult.findings.length : 6;
+  const displayCount = complianceResult ? complianceResult.findings.length : rc;
+  const sectionSlots = Array.from({ length: slotCount }, (_, slotIndex) => {
+    const finding = complianceResult?.findings[slotIndex] ?? null;
+    const scanFilled = !complianceResult && slotIndex < rc;
+    const dot = finding
+      ? finding.status === "gap" ? "#ff9a8f" : finding.status === "needs_review" ? "#f3d08a" : "#8fe8df"
+      : "#8fe8df";
+    const halo = finding
+      ? finding.status === "gap" ? "rgba(255,154,143,0.2)" : finding.status === "needs_review" ? "rgba(243,208,138,0.2)" : "rgba(143,232,223,0.2)"
+      : "rgba(143,232,223,0.2)";
+    return { finding, scanFilled, isNext: slotIndex === nextSlot, dot, halo };
   });
 
   return (
@@ -574,13 +512,13 @@ export default function ComplianceChecker() {
           <LogoMark />
           <div className="cx-brand-copy">
             <span className="cx-brand-name">ComplyX</span>
-            <span className="cx-brand-sub">SAMA · COMPLIANCE</span>
+            <span className="cx-brand-sub">COMPLIANCE AI</span>
           </div>
         </div>
         <div className="cx-topbar-actions">
           <div className="cx-status-pill">
             <span />
-            {t("SAMA · Live", "ساما · محدّث")}
+            {t("KSA Regs · Live", "اللوائح السعودية · محدّث")}
           </div>
           <div className="cx-lang-toggle">
             <div className={`cx-lang-indicator${isAr ? " is-ar" : ""}`} />
@@ -598,16 +536,20 @@ export default function ComplianceChecker() {
         <div dir={dirAttr}>
           <section className="cx-hero" data-screen-label="Hero" id="hero">
             <div className="cx-hero-grid">
+              <div className="cx-hero-visual" aria-hidden="true">
+                <div className="cx-shield-orbit" />
+                <ShieldHero />
+              </div>
               <div className="cx-hero-copy">
                 <div className="cx-eyebrow">
                   <span />
-                  {t("SAMA COMPLIANCE INTELLIGENCE", "الامتثال الذكي لأنظمة ساما")}
+                  {t("REGULATORY COMPLIANCE AI", "ذكاء الامتثال التنظيمي")}
                 </div>
-                <h1 className="cx-hero-title">{t("Know your compliance gaps before SAMA does.", "اكتشف فجوات امتثالك قبل أن تكشفها ساما.")}</h1>
+                <h1 className="cx-hero-title">{t("Automated Financial Compliance. Continuous Audit Readiness.", "امتثال مالي آلي. استعداد دائم للتدقيق.")}</h1>
                 <p className="cx-hero-subtitle">
                   {t(
-                    "Describe, upload, or speak your product. Our AI agent checks it against SAMA regulations in seconds.",
-                    "صِف منتجك أو ارفع مستنده أو سجّله صوتياً، ليطابقه الذكاء الاصطناعي مع لوائح ساما خلال ثوانٍ."
+                    "Describe, upload, or speak your product. Our AI agent checks it against KSA financial regulations in seconds.",
+                    "صِف منتجك أو ارفع مستنده أو سجّله صوتياً، ليطابقه الذكاء الاصطناعي مع اللوائح المالية السعودية خلال ثوانٍ."
                   )}
                 </p>
                 <button className="cx-hero-cta" onClick={() => scrollToId("input")} type="button">
@@ -616,10 +558,6 @@ export default function ComplianceChecker() {
                     <path d="M12 5v14M6 13l6 6 6-6" />
                   </svg>
                 </button>
-              </div>
-              <div className="cx-hero-visual" aria-hidden="true">
-                <div className="cx-shield-orbit" />
-                <ShieldHero />
               </div>
             </div>
 
@@ -641,7 +579,6 @@ export default function ComplianceChecker() {
               <div className="cx-input-orb one" />
               <div className="cx-input-orb two" />
               <div className="cx-input-grid-mask" />
-              <ShieldWatermark />
             </div>
             <div className="cx-input-shell">
               <div className="cx-input-heading">
@@ -680,8 +617,8 @@ export default function ComplianceChecker() {
                         maxLength={4000}
                         onChange={(event) => setInputText(event.target.value)}
                         placeholder={t(
-                          "Describe the financial product you plan to launch in Saudi Arabia — features, target users, payment flows, data handling…",
-                          "صف المنتج المالي الذي تخطط لإطلاقه في السعودية — الميزات، المستخدمين المستهدفين، تدفقات الدفع، طريقة التعامل مع البيانات..."
+                          "Describe the financial product you plan to launch in Saudi Arabia: features, target users, payment flows, data handling...",
+                          "صف المنتج المالي الذي تخطط لإطلاقه في السعودية: الميزات، المستخدمين المستهدفين، تدفقات الدفع، طريقة التعامل مع البيانات..."
                         )}
                         value={inputText}
                       />
@@ -690,7 +627,7 @@ export default function ComplianceChecker() {
                     <div className="cx-presets">
                       <span>{t("Try an example:", "جرّب مثالاً:")}</span>
                       {PRESETS.map((preset) => (
-                        <button className="cx-preset-link" key={preset.id} onClick={() => applyPreset(preset)} type="button">
+                        <button className="cx-preset-link" key={preset.id} onClick={(e) => { applyPreset(preset); (e.currentTarget as HTMLButtonElement).blur(); }} type="button">
                           {isAr ? preset.ar : preset.en}
                         </button>
                       ))}
@@ -725,7 +662,7 @@ export default function ComplianceChecker() {
                             <UploadMini />
                           </span>
                           <strong>{t("Drop your product document here", "اسحب مستند منتجك وأفلته هنا")}</strong>
-                          <span>{t("PDF, DOCX or TXT — up to 20 MB", "PDF أو DOCX أو TXT — حتى 20 ميجابايت")}</span>
+                          <span>{t("PDF, DOCX or TXT, up to 20 MB", "PDF أو DOCX أو TXT، حتى 20 ميجابايت")}</span>
                         </label>
                         <div className="cx-sample-file">
                           {t("or", "أو")}{" "}
@@ -849,19 +786,27 @@ export default function ComplianceChecker() {
                     <div className="cx-section-discovery-head">
                       <span>{t("Relevant regulations", "اللوائح ذات الصلة")}</span>
                       <strong>
-                        {rc} / {SECTIONS.length}
+                        {displayCount} / {slotCount}
                       </strong>
                     </div>
                     <div className="cx-section-slots">
                       {sectionSlots.map((slot, index) => (
-                        <div className={`cx-section-slot${slot.section ? " is-filled" : ""}${slot.isNext ? " is-next" : ""}`} key={index}>
-                          {slot.section ? (
-                            <div className={slot.occurrence % 2 === 0 ? "cx-slot-content" : "cx-slot-content alt"}>
+                        <div className={`cx-section-slot${(slot.finding || slot.scanFilled) ? " is-filled" : ""}${slot.isNext ? " is-next" : ""}`} key={index}>
+                          {slot.finding ? (
+                            <div className="cx-slot-content">
                               <div>
-                                <span>{isAr ? slot.section.article : slot.section.articleEn}</span>
+                                <span>{slot.finding.requirement.article}</span>
                                 <i style={{ background: slot.dot, boxShadow: `0 0 0 4px ${slot.halo}` }} />
                               </div>
-                              <strong dir="rtl">{isAr ? slot.section.ar : slot.section.en}</strong>
+                              <strong dir="rtl">{slot.finding.requirement.title}</strong>
+                            </div>
+                          ) : slot.scanFilled ? (
+                            <div className="cx-slot-content">
+                              <div>
+                                <span className="cx-slot-shimmer" />
+                                <i style={{ background: slot.dot, boxShadow: `0 0 0 4px ${slot.halo}` }} />
+                              </div>
+                              <strong className="cx-slot-shimmer" style={{ width: "80%" }} />
                             </div>
                           ) : (
                             <div className="cx-slot-skeleton">
@@ -890,7 +835,7 @@ export default function ComplianceChecker() {
                   <div>
                     <div>{t("STEP 3 · REPORT", "الخطوة 3 · التقرير")}</div>
                     <h2>
-                      {t("Scan complete", "اكتمل الفحص")} — {productName}
+                      {t("Scan complete", "اكتمل الفحص")}: {productName}
                     </h2>
                   </div>
                   <button className="cx-new-scan" onClick={resetToInput} type="button">
@@ -953,16 +898,23 @@ export default function ComplianceChecker() {
                   </div>
                   <div>
                     {complexityDefs.map((item) => (
-                      <button className={complexity === item.id ? "is-active" : ""} key={item.id} onClick={() => setComplexity(item.id)} type="button">
+                      <button className={complexity === item.id ? "is-active" : ""} key={item.id} onClick={() => handleComplexityChange(item.id)} type="button">
                         {item.label}
                       </button>
                     ))}
                   </div>
                 </div>
 
+                {isRefetching && (
+                  <div className="cx-refetch-bar">
+                    <span className="cx-spinner" />
+                    {t("Re-analysing with new detail level...", "إعادة التحليل بالمستوى الجديد...")}
+                  </div>
+                )}
+
                 <div className="cx-summary-line">
                   <div>{t("Executive Summary", "الملخص التنفيذي")}</div>
-                  <p dir="rtl">{EXEC_SUMMARY[complexity]}</p>
+                  <p dir={dirAttr}>{complianceResult?.executive_summary}</p>
                 </div>
 
                 <div className="cx-findings-block">
@@ -971,25 +923,26 @@ export default function ComplianceChecker() {
                     <strong>{t(`${gapCount} gaps · ${reviewCount} to review`, `${gapCount} فجوة · ${reviewCount} بحاجة لمراجعة`)}</strong>
                   </div>
                   <div className="cx-findings-list">
-                    {FINDINGS.map((finding) => {
-                      const expanded = expandedFindingId === finding.id;
+                    {(complianceResult?.findings ?? []).map((finding) => {
+                      const findingKey = finding.requirement.id;
+                      const expanded = expandedFindingId === findingKey;
                       const compliant = finding.status === "compliant";
                       const barColor = finding.status === "gap" ? "#b42318" : finding.status === "needs_review" ? "#a15c09" : "#147a5b";
                       const badgeBg = finding.status === "gap" ? "rgba(180,35,24,.1)" : finding.status === "needs_review" ? "rgba(161,92,9,.1)" : "rgba(20,122,91,.1)";
                       const statusLabel = finding.status === "gap" ? t("Gap", "فجوة") : finding.status === "needs_review" ? t("Needs Review", "بحاجة لمراجعة") : t("Compliant", "متوافق");
                       return (
-                        <article className={`cx-finding-row${compliant ? " is-compliant" : ""}`} key={finding.id}>
-                          <button className="cx-finding-header" onClick={() => setExpandedFindingId(expanded ? null : finding.id)} style={{ borderInlineStartColor: barColor }} type="button">
+                        <article className={`cx-finding-row${compliant ? " is-compliant" : ""}`} key={findingKey}>
+                          <button className="cx-finding-header" onClick={() => setExpandedFindingId(expanded ? null : findingKey)} style={{ borderInlineStartColor: barColor }} type="button">
                             <span style={{ background: badgeBg, color: barColor }}>{statusLabel}</span>
-                            <em>{finding.article}</em>
-                            <strong dir="rtl">{finding.title}</strong>
+                            <em>{finding.requirement.article}</em>
+                            <strong dir="rtl">{finding.requirement.title}</strong>
                             <ChevronMini expanded={expanded} />
                           </button>
                           <div className={`cx-finding-body${expanded ? " is-expanded" : ""}`}>
                             <div dir="rtl" style={{ borderInlineStartColor: barColor }}>
-                              <p>{finding.analysis[complexity]}</p>
+                              <p>{finding.analysis}</p>
                               <div>{t("Recommendation", "التوصية")}</div>
-                              <p>{finding.recommendation[complexity]}</p>
+                              <p>{finding.recommendation}</p>
                             </div>
                           </div>
                         </article>
@@ -997,6 +950,10 @@ export default function ComplianceChecker() {
                     })}
                   </div>
                 </div>
+
+                {complianceResult?.disclaimer && (
+                  <p className="cx-disclaimer" dir={dirAttr}>{complianceResult.disclaimer}</p>
+                )}
 
                 <button className="cx-download-btn" onClick={downloadReport} type="button">
                   <DownloadMini />

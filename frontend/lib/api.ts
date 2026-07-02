@@ -1,10 +1,15 @@
 import { ComplianceResult, ProductType } from "./types";
 
-export async function checkCompliance(product_description: string, product_type: ProductType) {
+export async function checkCompliance(
+  product_description: string,
+  product_type: ProductType,
+  tone: "simple" | "executive" | "technical" = "executive",
+  lang: "ar" | "en" = "ar"
+) {
   const response = await fetch("/api/check", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ product_description, product_type })
+    body: JSON.stringify({ product_description, product_type, tone, lang })
   });
   if (!response.ok) throw new Error("تعذر تنفيذ فحص الامتثال");
   return (await response.json()) as ComplianceResult;
