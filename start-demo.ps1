@@ -2,8 +2,9 @@
 # Boots Qdrant (docker compose, named volume), the FastAPI backend and the
 # Next.js frontend, verifying each layer and failing loudly if one is down.
 #
-# Ports: backend 8001, frontend 3002 (3000/8000 are taken by the bookress
-# project on this machine). Change $BackendPort/$FrontendPort if needed.
+# Ports: backend 8001, frontend 3002 (chosen to avoid the common 3000/8000
+# defaults other local projects often use). Change $BackendPort/$FrontendPort
+# below if you need different ports on your machine.
 
 $ErrorActionPreference = "Stop"
 $Root = $PSScriptRoot

@@ -23,9 +23,11 @@ Before touching any code:
 
 A SAMA (Saudi Central Bank) compliance AI agent. Users paste a financial product description, the system checks it against SAMA regulations and Shariah standards via RAG + LangGraph, and returns a cited compliance report with gap analysis.
 
-## ⚠️ Ports on this machine
+## ⚠️ Ports
 
-The bookress project's Docker containers reserve **3000 and 8000**. ComplyX therefore runs on:
+ComplyX runs on non-default ports (chosen to avoid the common 3000/8000 conflicts with other local
+projects). If these are free on your machine you can still use them; if not, ports are configurable via
+`$BackendPort`/`$FrontendPort` in `start-demo.ps1`:
 - **Backend: 8001** (`uvicorn app.main:app --port 8001 --host 0.0.0.0`)
 - **Frontend: 3002** (`PORT=3002 npm run dev`; `frontend/.env.local` sets both `BACKEND_URL=http://127.0.0.1:8001` and `PORT=3002`)
 - Qdrant: 6333 via `docker compose up -d qdrant` (named volume `complyx_qdrant_storage` — data survives container removal; do NOT use a bare `docker run`)
@@ -51,7 +53,7 @@ Located in `frontend/`. Next.js 15, Arabic RTL. New in v2:
 - `frontend/app/api/chat/route.ts` — proxies to FastAPI; NO mock fallback (same policy); 60s timeout
 - `frontend/app/api/clarify/route.ts` — proxies to FastAPI; falls back to `{questions:[]}` if backend unreachable (clarification is optional by design)
 - `frontend/app/api/extract-text/route.ts` — proxies multipart FormData to FastAPI; 503 if backend not configured
-- `frontend/.env.local` — UTF-8, sets `BACKEND_URL=http://127.0.0.1:8000` (the old UTF-16 file Node couldn't read was fixed 2026-07-03; `$env:BACKEND_URL` shell step no longer required)
+- `frontend/.env.local` — UTF-8, sets `BACKEND_URL=http://127.0.0.1:8001` (the old UTF-16 file Node couldn't read was fixed 2026-07-03; `$env:BACKEND_URL` shell step no longer required)
 
 **Backend — v2 (audit remediation build, 2026-07-04).**
 Located in `backend/app/`.
@@ -116,7 +118,7 @@ python -m app.ingest --dir data/regulations
 ```
 First run downloads the multilingual-e5-large model (~1.1GB). Embedding the full 13-PDF corpus takes ~2–4h on CPU. Watch for `Total in Qdrant: 9108` (±small drift from window-dedup) at the end.
 
-**Step 5 — Start backend** (from `backend/`; port 8001 on this machine — see Ports note at top):
+**Step 5 — Start backend** (from `backend/`; port 8001 — see Ports section above):
 ```powershell
 $env:PYTHONUTF8 = "1"
 uvicorn app.main:app --port 8001 --host 0.0.0.0
@@ -134,9 +136,9 @@ npm run dev
 
 **Windows-specific gotchas (read before debugging):**
 - Use `--host 0.0.0.0` for uvicorn — Windows resolves `localhost` to IPv6 `::1` but uvicorn binds IPv4 only
-- Use `http://127.0.0.1:8000` not `http://localhost:8000` for BACKEND_URL — same reason
-- Set `$env:BACKEND_URL` in the same PowerShell session as `npm run dev` — do NOT use `echo > .env.local` (PowerShell creates UTF-16 files that Node.js can't read)
-- If you see `BACKEND_URL = NOT SET — using mock` in the Next.js terminal, BACKEND_URL wasn't set before starting Next.js. Stop, set it, restart.
+- Use `http://127.0.0.1:8001` not `http://localhost:8001` for BACKEND_URL — same reason
+- If you hand-edit `frontend/.env.local` yourself, don't use PowerShell's `echo > .env.local` — it writes UTF-16, which Node.js can't read. Use `[System.IO.File]::WriteAllText(...)` with a UTF-8 encoding (see `start-demo.ps1` for the exact call), or edit the existing file with a normal text editor.
+- There is no mock fallback anywhere in this app anymore — if the backend is unreachable, `/api/check` and `/api/chat` return a 502/503 error instead of fake data. If you see an error banner in the UI, the backend is actually down; check its terminal.
 
 ## Phase Plan
 
