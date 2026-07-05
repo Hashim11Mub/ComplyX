@@ -1,15 +1,32 @@
 """
-Claude Sonnet 4.6 integration for compliance analysis and regulatory chat.
-Uses tool_use for structured output on compliance checks (more reliable than JSON parsing).
+Claude integration for compliance analysis, clarification and regulatory chat.
+
+Key design decisions (see agent/AUDIT-2026-07-03.md):
+- A-1: the LLM never reproduces regulation text. It returns the index of the
+  retrieved chunk each finding is based on; the backend attaches the true
+  verbatim text/source/article from that chunk. Quote and source faithfulness
+  are 1.0 by construction, and the output schema is ~40% smaller (latency).
+- I-5: the LLM does not produce a score. scoring.score_findings() derives it
+  deterministically from finding statuses and risks.
+- A-4: static system prompt + tools carry cache_control; the large retrieved
+  context carries a second breakpoint so tone/language re-fetches of the same
+  product hit the prompt cache. Clarification runs on Haiku (fast, cheap).
+- F-1: analyze_compliance_stream() streams findings incrementally using
+  fine-grained tool streaming (eager_input_streaming).
 """
 
+import json
 import os
+from typing import Any, Generator
+
 import anthropic
+
 from .config import settings
 from .models import (
     ComplianceResult, Finding, Requirement, ProductType,
     ClarifyOption, ClarifyQuestion, ClarifyResponse,
 )
+from .scoring import score_findings
 
 # Enable LangSmith tracing when configured
 if settings.langchain_tracing_v2 and settings.langchain_api_key:
@@ -28,6 +45,7 @@ except ImportError:
         return decorator
 
 MODEL = "claude-sonnet-4-6"
+CLARIFY_MODEL = "claude-haiku-4-5"
 
 AGENT_STEPS_AR = [
     "استخراج نطاق المنتج",
@@ -60,70 +78,84 @@ _TONE_INSTRUCTION = {
     },
 }
 
-COMPLIANCE_TOOL = {
+# ── Compliance tool (v2 — slim, chunk-index based) ──────────────────────────
+# The LLM references retrieved articles by index; it never writes regulation
+# text, source names, article numbers, or scores. The backend fills those in.
+
+COMPLIANCE_TOOL: dict[str, Any] = {
     "name": "submit_compliance_report",
-    "description": "Submit the structured compliance analysis report for the financial product",
+    "description": "Submit the structured compliance analysis for the financial product",
+    "eager_input_streaming": True,
     "input_schema": {
         "type": "object",
-        "required": ["compliance_score", "risk_level", "gaps_count", "findings", "executive_summary"],
+        "required": ["findings", "executive_summary"],
         "properties": {
-            "compliance_score": {
-                "type": "integer",
-                "minimum": 0,
-                "maximum": 100,
-                "description": "Overall compliance percentage (0-100)",
-            },
-            "risk_level": {
-                "type": "string",
-                "enum": ["low", "medium", "high"],
-                "description": "low if score>=82, medium if 58-81, high if <58",
-            },
-            "gaps_count": {"type": "integer", "description": "Number of gap findings"},
-            "executive_summary": {
-                "type": "string",
-                "description": "2-3 sentence Arabic executive summary of the compliance analysis",
-            },
             "findings": {
                 "type": "array",
-                "description": "One finding per regulatory requirement identified",
+                "maxItems": 8,
+                "description": "One finding per relevant regulatory requirement, most decision-critical first. Do not force findings for irrelevant articles.",
                 "items": {
                     "type": "object",
-                    "required": [
-                        "req_id", "req_source", "req_article", "req_title",
-                        "req_text", "req_keywords", "status", "risk", "analysis", "recommendation",
-                    ],
+                    "required": ["chunk", "title", "keywords", "status", "risk", "analysis", "recommendation"],
                     "properties": {
-                        "req_id": {"type": "string", "description": "Unique slug e.g. 'consumer-finance-disclosure'"},
-                        "req_source": {"type": "string", "description": "Exact regulation name as it appears in the context — must match one of the provided source names verbatim"},
-                        "req_article": {"type": "string", "description": "Article number/name exactly as shown in the context (e.g. 'القاعدة 17' or 'المادة 33')"},
-                        "req_title": {"type": "string", "description": "Requirement title — in Arabic when responding in Arabic, translated to English when responding in English"},
-                        "req_text": {"type": "string", "description": "Exact article text from the regulation"},
-                        "req_keywords": {
+                        "chunk": {
+                            "type": "integer",
+                            "description": "Index of the retrieved regulatory article this finding is based on — must be one of the [n] numbers in the provided context",
+                        },
+                        "title": {
+                            "type": "string",
+                            "description": "Short requirement title, written in the response language",
+                        },
+                        "keywords": {
                             "type": "array",
                             "items": {"type": "string"},
-                            "description": "2-4 Arabic keywords from the article",
+                            "description": "2-4 keywords in the response language",
                         },
                         "status": {
                             "type": "string",
                             "enum": ["compliant", "gap", "needs_review"],
-                            "description": "compliant=product clearly addresses this, gap=missing, needs_review=unclear",
+                            "description": "compliant=product clearly addresses this, gap=missing/violated, needs_review=cannot be determined from the description",
                         },
                         "risk": {"type": "string", "enum": ["low", "medium", "high"]},
                         "analysis": {
                             "type": "string",
-                            "description": "Arabic analysis of how the product relates to this requirement",
+                            "description": "How the product relates to this requirement, in the response language",
                         },
                         "recommendation": {
                             "type": "string",
-                            "description": "Arabic actionable recommendation",
+                            "description": "Actionable recommendation, in the response language",
                         },
                     },
                 },
+            },
+            "executive_summary": {
+                "type": "string",
+                "description": "2-3 sentence executive summary in the response language",
             },
         },
     },
 }
 
+# Static system prompt — deliberately free of any per-request interpolation so
+# the tools+system prefix is byte-identical across every scan (prompt cache).
+COMPLIANCE_SYSTEM = """You are a regulatory compliance analyst specialising in Saudi Arabian financial regulation: SAMA rulebooks, the Personal Data Protection Law (SDAIA), AAOIFI Shariah standards, and Capital Market Authority regulations.
+
+Task: assess the submitted financial product description against ONLY the numbered regulatory articles provided in the user message.
+
+Strict rules — no exceptions:
+- Every finding references exactly one provided article via its index in the `chunk` field. Never cite regulations from memory; if a requirement you know of is not in the provided articles, do not mention it.
+- Return at most 8 findings. Pick the articles most material to this product; skip irrelevant ones.
+- status: compliant = the description explicitly addresses the requirement; gap = the requirement clearly applies and is not met; needs_review = applicability or coverage cannot be determined from the description.
+- risk reflects the severity of THIS requirement for THIS product.
+- Write executive_summary, title, keywords, analysis and recommendation in the response language and tone requested at the end of the user message.
+- Do not calculate an overall score. The system derives it from your findings."""
+
+
+def _client() -> anthropic.Anthropic:
+    return anthropic.Anthropic(api_key=settings.anthropic_api_key)
+
+
+# ── Clarification (Haiku — fast structured intake) ──────────────────────────
 
 CLARIFY_TOOL = {
     "name": "return_clarification_questions",
@@ -139,16 +171,10 @@ CLARIFY_TOOL = {
                     "type": "object",
                     "required": ["id", "text_en", "text_ar", "allow_multiple", "options"],
                     "properties": {
-                        "id": {
-                            "type": "string",
-                            "description": "Short kebab-case slug e.g. 'license-status'",
-                        },
+                        "id": {"type": "string", "description": "Short kebab-case slug e.g. 'license-status'"},
                         "text_en": {"type": "string", "description": "Question in English"},
                         "text_ar": {"type": "string", "description": "Question in Arabic"},
-                        "allow_multiple": {
-                            "type": "boolean",
-                            "description": "True if the user may select multiple answers",
-                        },
+                        "allow_multiple": {"type": "boolean", "description": "True if the user may select multiple answers"},
                         "options": {
                             "type": "array",
                             "minItems": 2,
@@ -157,10 +183,7 @@ CLARIFY_TOOL = {
                                 "type": "object",
                                 "required": ["value", "label_en", "label_ar"],
                                 "properties": {
-                                    "value": {
-                                        "type": "string",
-                                        "description": "Machine-readable slug",
-                                    },
+                                    "value": {"type": "string", "description": "Machine-readable slug"},
                                     "label_en": {"type": "string"},
                                     "label_ar": {"type": "string"},
                                 },
@@ -173,6 +196,26 @@ CLARIFY_TOOL = {
     },
 }
 
+CLARIFY_SYSTEM = (
+    "You are a SAMA (Saudi Central Bank) compliance intake specialist.\n"
+    "Given a financial product description, identify the 0-4 most critical missing details "
+    "needed for an accurate SAMA compliance assessment.\n\n"
+    "Compliance-critical dimensions to check (only ask if genuinely missing or ambiguous):\n"
+    "1. License status — operating under existing SAMA/SOCPA license, applying, or pre-application?\n"
+    "2. Target users — Saudi nationals, residents, SMEs, retail consumers, or combinations?\n"
+    "3. Transaction limits — daily/monthly volumes and per-transaction caps\n"
+    "4. Data handling — personal/financial data collected, stored, processed\n"
+    "5. Third-party integrations — Saudi banks, SADAD, SARIE, international networks\n"
+    "6. Authentication method — OTP, biometric, multi-factor, password only\n"
+    "7. Credit/lending component — any credit extension, BNPL, or interest-bearing element\n\n"
+    "Rules:\n"
+    "- Return 0 questions if the description already addresses the relevant dimensions\n"
+    "- Maximum 4 questions total\n"
+    "- Each question must have 2-4 crisp, distinct options\n"
+    "- Do NOT ask about things already stated in the description\n"
+    "- Provide every question and option label in both Arabic and English"
+)
+
 
 @_traceable(name="generate_clarification_questions")
 def generate_clarification_questions(
@@ -180,88 +223,138 @@ def generate_clarification_questions(
     product_type: ProductType,
     lang: str = "ar",
 ) -> ClarifyResponse:
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
-
-    system_prompt = (
-        "You are a SAMA (Saudi Central Bank) compliance intake specialist.\n"
-        "Given a financial product description, identify the 0-4 most critical missing details "
-        "needed for an accurate SAMA compliance assessment.\n\n"
-        "Compliance-critical dimensions to check (only ask if genuinely missing or ambiguous):\n"
-        "1. License status — operating under existing SAMA/SOCPA license, applying, or pre-application?\n"
-        "2. Target users — Saudi nationals, residents, SMEs, retail consumers, or combinations?\n"
-        "3. Transaction limits — daily/monthly volumes and per-transaction caps\n"
-        "4. Data handling — personal/financial data collected, stored, processed\n"
-        "5. Third-party integrations — Saudi banks, SADAD, SARIE, international networks\n"
-        "6. Authentication method — OTP, biometric, multi-factor, password only\n"
-        "7. Credit/lending component — any credit extension, BNPL, or interest-bearing element\n\n"
-        "Rules:\n"
-        "- Return 0 questions if the description already addresses the relevant dimensions\n"
-        "- Maximum 4 questions total\n"
-        "- Each question must have 2-4 crisp, distinct options\n"
-        "- Do NOT ask about things already stated in the description\n"
-        "- Provide every question and option label in both Arabic and English"
-    )
-
-    user_message = (
-        f"Product type: {product_type}\n\n"
-        f"Product description:\n{product_description}\n\n"
-        "Identify the missing compliance-critical details and return targeted questions."
-    )
-
-    response = client.messages.create(
-        model=MODEL,
+    response = _client().messages.create(
+        model=CLARIFY_MODEL,
         max_tokens=1500,
         temperature=0,
-        system=system_prompt,
-        messages=[{"role": "user", "content": user_message}],
+        system=[{"type": "text", "text": CLARIFY_SYSTEM, "cache_control": {"type": "ephemeral"}}],
+        messages=[{
+            "role": "user",
+            "content": (
+                f"Product type: {product_type}\n\n"
+                f"Product description:\n{product_description}\n\n"
+                "Identify the missing compliance-critical details and return targeted questions."
+            ),
+        }],
         tools=[CLARIFY_TOOL],
         tool_choice={"type": "any"},
     )
 
-    tool_result = next(
-        (block for block in response.content if block.type == "tool_use"),
-        None,
-    )
+    tool_result = next((b for b in response.content if b.type == "tool_use"), None)
     if tool_result is None:
         return ClarifyResponse(questions=[])
 
-    data = tool_result.input
     questions = []
-    for q in data.get("questions", []):
+    for q in tool_result.input.get("questions", []):
         options = [
-            ClarifyOption(
-                value=o["value"],
-                label_en=o["label_en"],
-                label_ar=o["label_ar"],
-            )
+            ClarifyOption(value=o["value"], label_en=o["label_en"], label_ar=o["label_ar"])
             for o in q.get("options", [])
         ]
-        questions.append(
-            ClarifyQuestion(
-                id=q["id"],
-                text_en=q["text_en"],
-                text_ar=q["text_ar"],
-                allow_multiple=q.get("allow_multiple", False),
-                options=options,
-            )
-        )
-
+        questions.append(ClarifyQuestion(
+            id=q["id"],
+            text_en=q["text_en"],
+            text_ar=q["text_ar"],
+            allow_multiple=q.get("allow_multiple", False),
+            options=options,
+        ))
     return ClarifyResponse(questions=questions)
 
 
-def _build_context(chunks: list[dict]) -> tuple[str, list[str]]:
+# ── Compliance analysis ──────────────────────────────────────────────────────
+
+def _build_context(chunks: list[dict]) -> str:
     parts = []
-    regulation_names = []
     for i, chunk in enumerate(chunks, 1):
-        name = chunk["regulation_name"]
         parts.append(
-            f"[{i}] {name} — {chunk['article_number']}\n"
+            f"[{i}] {chunk['regulation_name']} — {chunk['article_number']}"
+            f" ({chunk.get('regulator', '') or 'SAMA'})\n"
             f"{chunk.get('article_title', '')}\n"
             f"{chunk['text'][:800]}"
         )
-        if name not in regulation_names:
-            regulation_names.append(name)
-    return "\n\n---\n\n".join(parts), regulation_names
+    return "\n\n---\n\n".join(parts)
+
+
+def _build_messages(
+    product_description: str,
+    product_type: ProductType,
+    chunks: list[dict],
+    tone: str,
+    lang: str,
+) -> list[dict]:
+    tone_key = tone if tone in _TONE_INSTRUCTION else "executive"
+    lang_key = lang if lang in ("ar", "en") else "ar"
+    lang_name = "English" if lang_key == "en" else "Arabic (اللغة العربية الفصحى)"
+
+    # Block 1 (cached across re-fetches): product + retrieved context.
+    # Block 2 (volatile): response language + tone — the only part that
+    # changes when the user flips language or detail level.
+    context_block = (
+        f"Product type: {product_type}\n\n"
+        f"Financial product description:\n{product_description}\n\n"
+        f"Retrieved regulatory articles:\n{_build_context(chunks)}"
+    )
+    instruction_block = (
+        f"Response language: {lang_name}.\n"
+        f"Tone: {_TONE_INSTRUCTION[tone_key][lang_key]}\n"
+        "Analyse the product against the provided articles and submit the compliance report."
+    )
+    return [{
+        "role": "user",
+        "content": [
+            {"type": "text", "text": context_block, "cache_control": {"type": "ephemeral"}},
+            {"type": "text", "text": instruction_block},
+        ],
+    }]
+
+
+def _finding_from_tool(item: dict, chunks: list[dict], position: int) -> Finding | None:
+    """Build a Finding, injecting verbatim text/source/article from the chunk."""
+    chunk_idx = item.get("chunk")
+    if not isinstance(chunk_idx, int) or not (1 <= chunk_idx <= len(chunks)):
+        return None
+    chunk = chunks[chunk_idx - 1]
+    corpus = chunk.get("corpus", "") or "reg"
+    return Finding(
+        requirement=Requirement(
+            id=f"{corpus}-c{chunk_idx}-{position}",
+            source=chunk.get("regulation_name", ""),
+            article=chunk.get("article_number", ""),
+            title=item.get("title", ""),
+            text=chunk.get("text", "")[:1200],
+            keywords=item.get("keywords", []) or [],
+            regulator=chunk.get("regulator", ""),
+        ),
+        status=item.get("status", "needs_review"),
+        risk=item.get("risk", "medium"),
+        analysis=item.get("analysis", ""),
+        recommendation=item.get("recommendation", ""),
+    )
+
+
+def _assemble_result(
+    data: dict,
+    chunks: list[dict],
+    product_type: ProductType,
+    lang: str,
+) -> ComplianceResult:
+    findings: list[Finding] = []
+    for i, item in enumerate(data.get("findings", []), 1):
+        finding = _finding_from_tool(item, chunks, i)
+        if finding is not None:
+            findings.append(finding)
+
+    score, risk_level, gaps = score_findings(findings)
+    lang_key = lang if lang in ("ar", "en") else "ar"
+    return ComplianceResult(
+        product_type=product_type,
+        compliance_score=score,
+        risk_level=risk_level,
+        gaps_count=gaps,
+        findings=findings,
+        executive_summary=data.get("executive_summary", ""),
+        agent_steps=AGENT_STEPS_EN if lang_key == "en" else AGENT_STEPS_AR,
+        disclaimer=DISCLAIMER_EN if lang_key == "en" else DISCLAIMER_AR,
+    )
 
 
 @_traceable(name="analyze_compliance")
@@ -272,136 +365,142 @@ def analyze_compliance(
     tone: str = "executive",
     lang: str = "ar",
 ) -> ComplianceResult:
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
-
-    regulatory_context, regulation_names = _build_context(retrieved_chunks)
-    names_list = "\n".join(f"- {n}" for n in regulation_names)
-
-    tone_key = tone if tone in _TONE_INSTRUCTION else "executive"
-    lang_key = lang if lang in ("ar", "en") else "ar"
-    tone_instruction = _TONE_INSTRUCTION[tone_key][lang_key]
-
-    if lang_key == "en":
-        system_prompt = f"""You are a regulatory compliance analyst specialising in Saudi Arabian financial regulations and Islamic finance standards.
-
-Your task: analyse the submitted financial product description and assess its compliance against the retrieved regulatory articles.
-
-Strict rules — no exceptions:
-- Only produce findings for articles numbered [1] to [{len(retrieved_chunks)}] present in the regulatory context below
-- Do not add any article or regulation from outside this context, even if you know it
-- req_source must be verbatim one of these sources only:
-{names_list}
-- {tone_instruction}
-- Compliance score: 82-100 = low risk, 58-81 = medium risk, below 58 = high risk
-- Write req_title in English (translate from the Arabic regulation title)
-- Write req_text in Arabic as it appears verbatim in the regulation
-- Write analysis and recommendation in English"""
-    else:
-        system_prompt = f"""أنت محلل امتثال تنظيمي متخصص في الأنظمة المالية السعودية ومعايير التمويل الإسلامي.
-
-مهمتك: تحليل وصف المنتج المالي المقدم وتقييم مدى امتثاله للمواد التنظيمية المستردة.
-
-قواعد صارمة لا استثناء فيها:
-- أنتج نتائج فقط للمواد المرقّمة [1] إلى [{len(retrieved_chunks)}] الموجودة في السياق التنظيمي أدناه
-- لا تُضف أي مادة أو نظام من خارج هذا السياق ولو كنت تعرفه
-- قيمة req_source يجب أن تكون حرفياً إحدى المصادر التالية فقط:
-{names_list}
-- {tone_instruction}
-- كن محدداً في التحليل والتوصيات
-- نسبة الامتثال: 82-100 = مخاطر منخفضة، 58-81 = مخاطر متوسطة، أقل من 58 = مخاطر عالية"""
-
-    if lang_key == "en":
-        user_message = f"""Product type: {product_type}
-
-Financial product description:
-{product_description}
-
-Retrieved regulatory articles:
-{regulatory_context}
-
-Analyse this product against the regulatory articles provided and submit the compliance report."""
-    else:
-        user_message = f"""نوع المنتج: {product_type}
-
-وصف المنتج المالي:
-{product_description}
-
-المواد التنظيمية المسترجعة:
-{regulatory_context}
-
-حلل هذا المنتج مقابل المواد التنظيمية المقدمة وقدم تقرير الامتثال."""
-
-    response = client.messages.create(
+    response = _client().messages.create(
         model=MODEL,
-        max_tokens=8192,
+        max_tokens=4096,
         temperature=0,
-        system=system_prompt,
-        messages=[{"role": "user", "content": user_message}],
+        system=[{"type": "text", "text": COMPLIANCE_SYSTEM, "cache_control": {"type": "ephemeral"}}],
+        messages=_build_messages(product_description, product_type, retrieved_chunks, tone, lang),
         tools=[COMPLIANCE_TOOL],
         tool_choice={"type": "any"},
     )
 
-    tool_result = next(
-        (block for block in response.content if block.type == "tool_use"),
-        None,
-    )
+    tool_result = next((b for b in response.content if b.type == "tool_use"), None)
     if tool_result is None:
         raise ValueError("Claude did not call the compliance report tool")
 
     data = tool_result.input
     if "findings" not in data:
-        import json as _json
         raise ValueError(
             f"Tool response missing 'findings'. Stop reason: {response.stop_reason}. "
             f"Keys present: {list(data.keys())}. "
-            f"Partial data: {_json.dumps(data, ensure_ascii=False)[:600]}"
+            f"Partial data: {json.dumps(data, ensure_ascii=False)[:600]}"
         )
-    findings = [
-        Finding(
-            requirement=Requirement(
-                id=f["req_id"],
-                source=f["req_source"],
-                article=f["req_article"],
-                title=f["req_title"],
-                text=f["req_text"],
-                keywords=f["req_keywords"],
-            ),
-            status=f["status"],
-            risk=f["risk"],
-            analysis=f["analysis"],
-            recommendation=f["recommendation"],
-        )
-        for f in data["findings"]
-    ]
+    return _assemble_result(data, retrieved_chunks, product_type, lang)
 
-    agent_steps = AGENT_STEPS_EN if lang_key == "en" else AGENT_STEPS_AR
-    disclaimer = DISCLAIMER_EN if lang_key == "en" else DISCLAIMER_AR
 
-    return ComplianceResult(
-        product_type=product_type,
-        compliance_score=data["compliance_score"],
-        risk_level=data["risk_level"],
-        gaps_count=data["gaps_count"],
-        findings=findings,
-        executive_summary=data["executive_summary"],
-        agent_steps=agent_steps,
-        disclaimer=disclaimer,
-    )
+# ── Streaming variant (F-1) ──────────────────────────────────────────────────
 
+class _FindingsScanner:
+    """Incrementally extract completed objects from the `findings` array of a
+    partially received tool-input JSON string."""
+
+    def __init__(self) -> None:
+        self.buf = ""
+        self.array_start = -1  # offset of '[' of the findings array
+        self.pos = -1          # scan offset within buf
+        self.depth = 0
+        self.in_string = False
+        self.escape = False
+        self.obj_start = -1
+
+    def feed(self, fragment: str) -> list[dict]:
+        self.buf += fragment
+        if self.array_start < 0:
+            key = self.buf.find('"findings"')
+            if key < 0:
+                return []
+            bracket = self.buf.find("[", key)
+            if bracket < 0:
+                return []
+            self.array_start = bracket
+            self.pos = bracket + 1
+
+        out: list[dict] = []
+        while self.pos < len(self.buf):
+            ch = self.buf[self.pos]
+            if self.in_string:
+                if self.escape:
+                    self.escape = False
+                elif ch == "\\":
+                    self.escape = True
+                elif ch == '"':
+                    self.in_string = False
+            elif ch == '"':
+                self.in_string = True
+            elif ch == "{":
+                if self.depth == 0:
+                    self.obj_start = self.pos
+                self.depth += 1
+            elif ch == "}":
+                self.depth -= 1
+                if self.depth == 0 and self.obj_start >= 0:
+                    try:
+                        out.append(json.loads(self.buf[self.obj_start : self.pos + 1]))
+                    except json.JSONDecodeError:
+                        pass
+                    self.obj_start = -1
+            elif ch == "]" and self.depth == 0:
+                break  # findings array closed
+            self.pos += 1
+        return out
+
+
+@_traceable(name="analyze_compliance_stream")
+def analyze_compliance_stream(
+    product_description: str,
+    product_type: ProductType,
+    retrieved_chunks: list[dict],
+    tone: str = "executive",
+    lang: str = "ar",
+) -> Generator[tuple[str, Any], None, None]:
+    """Yield ("finding", Finding) events as Claude writes them, then a final
+    ("complete", ComplianceResult) assembled from the full tool input."""
+    scanner = _FindingsScanner()
+    emitted = 0
+
+    with _client().messages.stream(
+        model=MODEL,
+        max_tokens=4096,
+        temperature=0,
+        system=[{"type": "text", "text": COMPLIANCE_SYSTEM, "cache_control": {"type": "ephemeral"}}],
+        messages=_build_messages(product_description, product_type, retrieved_chunks, tone, lang),
+        tools=[COMPLIANCE_TOOL],
+        tool_choice={"type": "any"},
+    ) as stream:
+        for event in stream:
+            if event.type == "content_block_delta" and event.delta.type == "input_json_delta":
+                for item in scanner.feed(event.delta.partial_json):
+                    finding = _finding_from_tool(item, retrieved_chunks, emitted + 1)
+                    if finding is not None:
+                        emitted += 1
+                        yield ("finding", finding)
+        final = stream.get_final_message()
+
+    tool_result = next((b for b in final.content if b.type == "tool_use"), None)
+    if tool_result is None:
+        raise ValueError("Claude did not call the compliance report tool")
+    yield ("complete", _assemble_result(tool_result.input, retrieved_chunks, product_type, lang))
+
+
+# ── Regulatory chat ──────────────────────────────────────────────────────────
 
 def answer_regulatory_question(
     query: str,
     retrieved_chunks: list[dict],
     history: list[dict],
 ) -> str:
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
-
-    regulatory_context, _ = _build_context(retrieved_chunks)
+    regulatory_context = _build_context(retrieved_chunks)
 
     system_prompt = f"""أنت مستشار تنظيمي متخصص في أنظمة ساما والتشريعات المالية السعودية.
-أجب على الأسئلة التنظيمية بدقة، مستنداً إلى المواد التنظيمية المقدمة.
+أجب على الأسئلة التنظيمية بدقة، مستنداً إلى المواد التنظيمية المقدمة فقط.
 اذكر رقم المادة والنظام المصدر عند كل استشهاد.
-استخدم اللغة العربية الفصحى.
+أجب بلغة السؤال: إن سُئلت بالعربية فأجب بالعربية الفصحى، وإن سُئلت بالإنجليزية فأجب بالإنجليزية.
+
+قواعد التنسيق (صارمة):
+- نص عادي فقط: لا عناوين ماركداون (#)، لا نجوم (**)، لا رموز تعبيرية، لا جداول، لا فواصل أفقية
+- أجب في فقرة إلى ثلاث فقرات قصيرة كحد أقصى
+- إن لم تجد الإجابة في المواد المقدمة فقل ذلك صراحة ولا تخترع مادة
 
 السياق التنظيمي:
 {regulatory_context}"""
@@ -411,12 +510,11 @@ def answer_regulatory_question(
         {"role": "user", "content": query},
     ]
 
-    response = client.messages.create(
+    response = _client().messages.create(
         model=MODEL,
         max_tokens=1024,
         temperature=0,
         system=system_prompt,
         messages=messages,
     )
-
     return response.content[0].text

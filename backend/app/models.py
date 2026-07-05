@@ -16,6 +16,7 @@ class Requirement(BaseModel):
     title: str
     text: str
     keywords: list[str]
+    regulator: str = ""  # SAMA | SDAIA | AAOIFI | CMA | ""
 
 
 class Finding(BaseModel):
@@ -42,6 +43,7 @@ class CheckRequest(BaseModel):
     product_type: ProductType
     tone: str = "executive"  # simple | executive | technical
     lang: str = "ar"         # ar | en
+    corpora: list[str] | None = None  # e.g. ["sama","pdpl","shariah","cma"]; None = all
 
 
 class ClarifyOption(BaseModel):

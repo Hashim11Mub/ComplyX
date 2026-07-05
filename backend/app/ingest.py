@@ -35,6 +35,30 @@ except ImportError:
     DOCLING_AVAILABLE = False
 
 
+# ── Corpus tagging ───────────────────────────────────────────────────────────
+# Regulator is inferred from the PDF filename. Unknown files fall into "other"
+# so a new drop-in PDF is never silently attributed to SAMA.
+
+_CORPUS_RULES: list[tuple[str, str, str]] = [
+    # (filename substring lowercase, corpus slug, regulator display name)
+    ("sama_rulebook", "sama", "SAMA"),
+    ("personaldata", "pdpl", "SDAIA"),
+    ("pdpl", "pdpl", "SDAIA"),
+    ("shariaa", "shariah", "AAOIFI"),
+    ("shariah", "shariah", "AAOIFI"),
+    ("aaoifi", "shariah", "AAOIFI"),
+    ("capitalmarket", "cma", "CMA"),
+]
+
+
+def corpus_for_filename(pdf_name: str) -> tuple[str, str]:
+    lowered = pdf_name.lower()
+    for needle, corpus, regulator in _CORPUS_RULES:
+        if needle in lowered:
+            return corpus, regulator
+    return "other", "Other"
+
+
 # ── Text extraction ──────────────────────────────────────────────────────────
 
 def extract_pages(pdf_path: Path) -> list[dict]:
@@ -94,6 +118,29 @@ _EN_CHAPTER = re.compile(
 )
 
 
+def _windows(text: str, chunk_chars: int = 1300, overlap_chars: int = 150) -> list[str]:
+    """Split text into word-boundary windows with overlap."""
+    if len(text) <= chunk_chars:
+        return [text]
+    out = []
+    start = 0
+    while start < len(text):
+        end = min(start + chunk_chars, len(text))
+        if end < len(text):
+            space = text.rfind(" ", start + overlap_chars + 1, end)
+            if space > start:
+                end = space
+        piece = text[start:end].strip()
+        if piece:
+            out.append(piece)
+        if end >= len(text):
+            break
+        # The word-boundary search starts past the overlap span, so this
+        # always advances; never let start move backwards (infinite loop).
+        start = max(end - overlap_chars, start + 1)
+    return out
+
+
 def _sliding_window(
     pages: list[dict],
     regulation_name: str,
@@ -102,22 +149,16 @@ def _sliding_window(
     overlap_chars: int = 120,
 ) -> list[dict]:
     """Last-resort chunker: fixed-size windows across all page text."""
+    corpus, regulator = corpus_for_filename(pdf_name)
     full = "\n\n".join(p["text"] for p in pages)
     chunks = []
-    start = 0
-    idx = 0
-    while start < len(full):
-        end = min(start + chunk_chars, len(full))
-        # Don't split mid-word — walk back to last space
-        if end < len(full):
-            space = full.rfind(" ", start, end)
-            if space > start:
-                end = space
-        text = full[start:end].strip()
+    for idx, text in enumerate(_windows(full, chunk_chars, overlap_chars)):
         if len(text) > 80:
             chunks.append({
                 "regulation_name": regulation_name,
                 "regulation_filename": pdf_name,
+                "corpus": corpus,
+                "regulator": regulator,
                 "chapter": "",
                 "section": "",
                 "article_number": f"chunk-{idx + 1}",
@@ -125,8 +166,6 @@ def _sliding_window(
                 "text": text,
                 "corpus_version": settings.corpus_version,
             })
-        start = end - overlap_chars
-        idx += 1
     return chunks
 
 
@@ -145,6 +184,7 @@ def _split_on_pattern(
     if len(parts) < 5:  # fewer than 2 articles found — not useful
         return []
 
+    corpus, regulator = corpus_for_filename(pdf_name)
     chunks = []
     chapter = current_chapter
     i = 0
@@ -164,20 +204,24 @@ def _split_on_pattern(
 
             lines = body.split("\n")
             article_title = lines[0].strip() if lines else ""
-            # Cap chunk at 1500 chars to stay within embedding model limits
-            chunk_text = f"{article_number}\n{body}"[:1500]
 
             if len(body) > 30:
-                chunks.append({
-                    "regulation_name": regulation_name,
-                    "regulation_filename": pdf_name,
-                    "chapter": chapter,
-                    "section": "",
-                    "article_number": article_number,
-                    "article_title": article_title,
-                    "text": chunk_text,
-                    "corpus_version": settings.corpus_version,
-                })
+                # Long articles become several windowed chunks that share the same
+                # article metadata — nothing is truncated away (Banking rulebook
+                # previously lost everything past 1,500 chars per article).
+                for text_part in _windows(f"{article_number}\n{body}"):
+                    chunks.append({
+                        "regulation_name": regulation_name,
+                        "regulation_filename": pdf_name,
+                        "corpus": corpus,
+                        "regulator": regulator,
+                        "chapter": chapter,
+                        "section": "",
+                        "article_number": article_number,
+                        "article_title": article_title,
+                        "text": text_part,
+                        "corpus_version": settings.corpus_version,
+                    })
             i += 2
         else:
             ch = _AR_CHAPTER.search(part) or _EN_CHAPTER.search(part)

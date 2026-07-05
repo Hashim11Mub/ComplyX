@@ -23,33 +23,52 @@ Before touching any code:
 
 A SAMA (Saudi Central Bank) compliance AI agent. Users paste a financial product description, the system checks it against SAMA regulations and Shariah standards via RAG + LangGraph, and returns a cited compliance report with gap analysis.
 
-## Current State (as of 2026-07-03 — update this section + commit when a phase changes)
+## ⚠️ Ports on this machine
 
-**Frontend — COMPLETE and CONNECTED to real backend.**
-Located in `frontend/`. Next.js 15, Arabic RTL, all components done AND wired to live FastAPI.
-- `frontend/components/ComplianceChecker.tsx` — main UI; fully connected to real API (no mock). All input modes live (describe, upload, voice). Clarification interview intercepts scan. Language switch triggers full re-fetch. Findings show traceable regulatory basis. Concurrent animation + API: `apiResultRef` / `animationFinishedRef` refs so whichever finishes last calls `finishScan()`. 2.5s hold on scan view so user reads regulation titles before report appears. Slot count is dynamic (`complianceResult.findings.length`), not hardcoded 6.
+The bookress project's Docker containers reserve **3000 and 8000**. ComplyX therefore runs on:
+- **Backend: 8001** (`uvicorn app.main:app --port 8001 --host 0.0.0.0`)
+- **Frontend: 3002** (`PORT=3002 npm run dev`; `frontend/.env.local` sets both `BACKEND_URL=http://127.0.0.1:8001` and `PORT=3002`)
+- Qdrant: 6333 via `docker compose up -d qdrant` (named volume `complyx_qdrant_storage` — data survives container removal; do NOT use a bare `docker run`)
+- One-shot boot: `./start-demo.ps1` (checks every layer, fails loudly)
+
+## Current State (as of 2026-07-04 — update this section + commit when a phase changes)
+
+**Frontend — v2 (streaming + multi-regulator, verified end-to-end in browser 2026-07-04).**
+Located in `frontend/`. Next.js 15, Arabic RTL. New in v2:
+- **Streaming scan (F-1):** `runActualScan()` uses `streamCheck()` (lib/api.ts) against `/api/check-stream`; slots fill with real retrieved article titles (~1s warm), then live findings as Claude writes them; any stream error falls back to plain `checkCompliance()`. Slot priority: final findings → streamed findings → retrieved titles → shimmer.
+- **Regulator scope chips (F-3):** `CORPUS_DEFS` chips above Product Type (SAMA/PDPL/Shariah/CMA); a chip disables itself when /health reports 0 chunks for that corpus; at least one always selected; per-finding regulator pill (`.cx-reg-tag`).
+- **Live health badge (A-2):** topbar pill polls `/api/health` every 30s → "KSA Regs · Live · N" or red "Backend offline".
+- **Honest report meta (I-7):** "Session reference" + "Scan date" + "Checked against N indexed articles · Corpus vX" (no more fictional auto-archive), plus the "Includes N clarified details" chip (Enh-7).
+- **PDF export (F-2):** primary button → `/api/report-pdf` (bilingual PDF); falls back to the plain-text export on failure.
+- **Deleted dead code (A-12):** ComplianceReport.tsx, ChatConsultation.tsx, AgentSteps.tsx, lib/mockCompliance.ts, app/api/report stub, api.ts downloadReport.
+- `frontend/components/ComplianceChecker.tsx` — main UI; fully connected to real API. All input modes live (describe, upload, voice — voice errors go to a separate `voiceError` state, never into the transcript). Clarification interview intercepts scan. Language switch triggers full re-fetch (toggle disabled while re-fetching). **Floating chat drawer is wired to the real `/api/chat`** via `askConsultant()` (canned replies removed). **Honest scan state:** journey steps 1–3 animate on timers; step 4 stays active with rotating status text + elapsed seconds until the real API result arrives, then `finishScan()` runs (no `apiResultRef`/`animationFinishedRef` race anymore). 2.5s hold on scan view so user reads regulation titles before report appears. Slot count is dynamic. Finding titles/verbatim quotes use `dir="auto"`. Finding React keys are `id-idx` (LLM slugs can collide).
 - `frontend/components/AgentSteps.tsx` — live step visualization
-- `frontend/components/ChatConsultation.tsx` — regulatory chat
+- `frontend/components/ChatConsultation.tsx` — **dead code, not imported** (the drawer in ComplianceChecker is the live chat)
 - `frontend/components/ComplianceReport.tsx` — **dead code, not imported anywhere** — all report rendering is inline in ComplianceChecker.tsx. Can be deleted.
 - `frontend/lib/types.ts` — TypeScript types **your Pydantic models must match exactly**. Includes `AppState` (`"input" | "clarifying" | "scanning" | "results"`), `ClarifyQuestion`, `ClarifyOption`, `ClarifyResponse`.
-- `frontend/lib/api.ts` — `checkCompliance(desc, productType, tone, lang)` + `getProductQuestions(desc, productType, lang)` — real API calls, no mock
-- `frontend/app/api/check/route.ts` — proxies to FastAPI
-- `frontend/app/api/clarify/route.ts` — proxies to FastAPI; falls back to `{questions:[]}` if backend unreachable
+- `frontend/lib/api.ts` — `checkCompliance(desc, productType, tone, lang)` + `getProductQuestions(desc, productType, lang)` + `askConsultant(query, messages)` — real API calls
+- `frontend/app/api/check/route.ts` — proxies to FastAPI; **NO mock fallback** — returns 503/502 with a clear error if backend missing/unreachable (mock fallback removed 2026-07-03; a dead backend must fail loudly, never fake results)
+- `frontend/app/api/chat/route.ts` — proxies to FastAPI; NO mock fallback (same policy); 60s timeout
+- `frontend/app/api/clarify/route.ts` — proxies to FastAPI; falls back to `{questions:[]}` if backend unreachable (clarification is optional by design)
 - `frontend/app/api/extract-text/route.ts` — proxies multipart FormData to FastAPI; 503 if backend not configured
+- `frontend/.env.local` — UTF-8, sets `BACKEND_URL=http://127.0.0.1:8000` (the old UTF-16 file Node couldn't read was fixed 2026-07-03; `$env:BACKEND_URL` shell step no longer required)
 
-**Backend — COMPLETE (single-call RAG, bilingual, LangSmith traced).**
-Located in `backend/app/`. All files exist and are working.
+**Backend — v2 (audit remediation build, 2026-07-04).**
+Located in `backend/app/`.
 - `config.py` — pydantic-settings, reads `.env` via absolute path (critical — see HANDOFF)
-- `models.py` — Pydantic models: `CheckRequest` (`tone` + `lang`), `ComplianceResult` (`disclaimer` + `agent_steps`), `ClarifyRequest`, `ClarifyResponse`, `ClarifyQuestion`, `ClarifyOption`
+- `models.py` — `CheckRequest` (+`corpora: list[str]|None`), `Requirement` (+`regulator`), `ComplianceResult`, clarify models
+- `scoring.py` — **deterministic score** (I-5): 100 − penalties per finding (gap: −16/−10/−6 by risk; needs_review: −8/−5/−3), clamp [5,100]; risk thresholds 82/58. The LLM never emits a score.
 - `embeddings.py` — multilingual-e5-large, `query:` / `passage:` prefixes
-- `retriever.py` — Qdrant client, uses `query_points()` (qdrant-client 2.x)
-- `ingest.py` — PDF → chunks → Qdrant; run once per machine to populate the DB
-- `llm.py` — Claude Sonnet 4.6, `temperature=0`, `tool_use` forced output, `max_tokens=8192`, LangSmith `@traceable`, bilingual; `analyze_compliance()` + `generate_clarification_questions()` + `answer_regulatory_question()`
-- `main.py` — FastAPI app, CORS, startup health check; registers check + chat + clarify + extract routers
-- `routes/check.py` — POST /api/check (retrieval limit 16 chunks)
+- `retriever.py` — Qdrant `query_points()` + **corpus filters**; multi-corpus requests are balanced per corpus then merged by score; `count_by_corpus()` feeds /health
+- `ingest.py` — PDF → chunks → Qdrant; tags every chunk with `corpus`/`regulator` by filename (`corpus_for_filename`); long articles become windowed continuation chunks (no more 1,500-char truncation — Banking rulebook went 118 → 3,201 chunks)
+- `llm.py` — **v2 core.** Sonnet 4.6 for analysis/chat, **Haiku 4.5 for clarify**. `COMPLIANCE_TOOL` v2 is chunk-index based (A-1): the LLM returns `chunk` (index into the retrieved context) + title/keywords/status/risk/analysis/recommendation; the backend injects verbatim text, source, article and regulator from the actual chunk — quote and source faithfulness are 1.0 by construction, no scores/quotes in the output schema (≈40% fewer output tokens, max_tokens now 4096). Static system prompt + tools carry `cache_control`; the retrieved-context block carries a second breakpoint so tone/lang re-fetches hit the prompt cache (volatile lang/tone instructions live at the END of the user message). `analyze_compliance_stream()` streams findings incrementally via fine-grained tool streaming (`eager_input_streaming` + `_FindingsScanner` partial-JSON parser). Chat answers in the question's language, plain text only.
+- `main.py` — FastAPI app, CORS (3000+3002), registers check/check_stream/chat/clarify/extract/report_pdf; /health returns `corpus_version` + per-corpus counts
+- `routes/check.py` — POST /api/check (retrieval limit 12, corpora filter)
+- `routes/check_stream.py` — POST /api/check/stream — SSE: `retrieved` → `finding`* → `complete` (or `error`; client falls back to /api/check)
+- `routes/report_pdf.py` — POST /api/report-pdf — bilingual branded PDF (Playwright Chromium; returns 501 with install hint if Playwright missing)
 - `routes/chat.py` — POST /api/chat
 - `routes/clarify.py` — POST /api/clarify; returns `{questions:[]}` for short descriptions; 0–4 structured multiple-choice questions
-- `routes/extract.py` — POST /api/extract-text; supports PDF (PyMuPDF), DOCX (python-docx), TXT; max 8,000 chars with truncation flag
+- `routes/extract.py` — POST /api/extract-text; supports PDF (PyMuPDF), DOCX (python-docx), TXT; max 8,000 chars with truncation flag; rejects files over 20 MB with 413 (matches the UI's promise)
 
 **New deps in requirements.txt:** `python-multipart>=0.0.9`, `python-docx>=1.1.0`
 Run `pip install python-multipart python-docx` after pulling on any machine.
@@ -64,15 +83,12 @@ Run `pip install python-multipart python-docx` after pulling on any machine.
 - Source faithfulness: not computed in stored results (the `_retrieved_sources` private fields were stripped before saving)
 - Notable: p08 score=28/high, p11 score=18/high — appropriately low for non-compliant products; p01–p07 cluster around 62/medium
 
-**Qdrant state:** 618 chunks from 8 English SAMA PDFs. Local to each machine — run ingest per machine (see setup below).
+**Qdrant state (2026-07-04):** **9,108 chunks from 13 PDFs** — sama 5,432 · shariah 3,334 · cma 212 · pdpl 130 (corpus 2026-07, fixed windowing chunker). Local to each machine — run ingest per machine (see setup below); expect ~2–4h of CPU embedding for the full corpus.
 
-**NOT YET DONE (deprioritized for hackathon submission):**
-- LangGraph multi-tool agent (Phase 1) — still using single Claude call
+**NOT YET DONE (post-hackathon):**
+- LangGraph multi-tool agent (Phase 1) — the streaming pipeline covers the demo story; revisit later
 - PostgreSQL audit log (Phase 2)
-- WeasyPrint PDF export (Phase 2)
-- SDAIA PDPL PDFs not yet indexed
-- AAOIFI Shariah Standards PDF not yet indexed
-- `frontend/components/ComplianceReport.tsx` cleanup — dead code, safe to delete
+- Arabic-edition rulebooks (for Arabic-native verbatim quotes; current corpus is English)
 
 ## New Team Member / New Machine Setup
 
@@ -88,9 +104,9 @@ QDRANT_COLLECTION=sama_regulations
 
 **Step 2 — Get SAMA PDFs** — obtain the 8 PDFs from your teammate and place them in `backend/data/regulations/`. They are not in the repo (large files, public documents). Download from https://rulebook.sama.gov.sa if needed.
 
-**Step 3 — Start Qdrant:**
+**Step 3 — Start Qdrant (named volume — do NOT use bare docker run):**
 ```powershell
-docker run -p 6333:6333 -p 6334:6334 qdrant/qdrant
+docker compose up -d qdrant
 ```
 
 **Step 4 — Install Python deps and run ingest** (from `backend/`):
@@ -98,22 +114,23 @@ docker run -p 6333:6333 -p 6334:6334 qdrant/qdrant
 pip install -r requirements.txt
 python -m app.ingest --dir data/regulations
 ```
-First run downloads the multilingual-e5-large model (~1.1GB) — takes 10–30 min depending on internet/GPU. Watch for `Indexed X chunks total` at the end. Expected: ~618 chunks.
+First run downloads the multilingual-e5-large model (~1.1GB). Embedding the full 13-PDF corpus takes ~2–4h on CPU. Watch for `Total in Qdrant: 9108` (±small drift from window-dedup) at the end.
 
-**Step 5 — Start backend** (from `backend/`):
+**Step 5 — Start backend** (from `backend/`; port 8001 on this machine — see Ports note at top):
 ```powershell
-uvicorn app.main:app --reload --port 8000 --host 0.0.0.0
+$env:PYTHONUTF8 = "1"
+uvicorn app.main:app --port 8001 --host 0.0.0.0
 ```
-Expected startup line: `[startup] Qdrant ready — 618 articles indexed`
-Verify: `http://127.0.0.1:8000/health` → `{"status":"ok","indexed_articles":618,"ready":true}`
+Verify: `http://127.0.0.1:8001/health` → `{"status":"ok","indexed_articles":<N>,"ready":true,"corpus_version":"2026-07","corpora":{...}}`
 
 **Step 6 — Start frontend** (from `frontend/`):
 ```powershell
 npm install
-$env:BACKEND_URL = "http://127.0.0.1:8000"
 npm run dev
 ```
-Open `http://localhost:3000`
+`frontend/.env.local` (UTF-8) already sets `BACKEND_URL=http://127.0.0.1:8001` and `PORT=3002`. Open `http://localhost:3002`
+
+**Or do steps 3–6 in one shot:** `./start-demo.ps1` from the repo root.
 
 **Windows-specific gotchas (read before debugging):**
 - Use `--host 0.0.0.0` for uvicorn — Windows resolves `localhost` to IPv6 `::1` but uvicorn binds IPv4 only
@@ -129,11 +146,14 @@ Open `http://localhost:3000`
 | 0B | Backend skeleton (FastAPI, Qdrant, single Claude call) | ✅ Complete |
 | B | Frontend connected to real backend; bilingual; UI fixes; eval harness | ✅ Complete (2026-07-02) |
 | C | Clarification interview; upload/voice input; language switch fix; traceable findings | ✅ Complete (2026-07-03) |
-| 1 | LangGraph multi-tool agent replacing single Claude call | ⬜ Deferred |
-| 2 | PostgreSQL audit log + WeasyPrint PDF export | ⬜ Deferred |
-| 3 | Additional regulation sources (SDAIA PDPL, AAOIFI Shariah Standards) | ⬜ Deferred |
+| D | Full audit remediation: A-1 quote injection, deterministic scoring, prompt caching, Haiku clarify, honest UI claims, health badge, dead-code cleanup | ✅ Complete (2026-07-04) |
+| F-1 | **Streaming scan** — SSE, retrieved articles fill slots in ~1s, findings appear as Claude writes them, fallback to plain POST | ✅ Complete (2026-07-04) |
+| F-2 | **PDF Remediation Roadmap** — bilingual branded PDF via Playwright Chromium (prioritized fix-plan table + full findings) | ✅ Complete (2026-07-04) |
+| F-3 | **Multi-regulator scan** — SAMA + PDPL + AAOIFI Shariah + CMA corpora, scope chips, balanced retrieval, per-finding regulator tags | ✅ Complete (2026-07-04) |
+| 1 | LangGraph multi-tool agent | ⬜ Superseded in spirit by the streaming pipeline; revisit post-hackathon |
+| 2 | PostgreSQL audit log | ⬜ Deferred |
 
-**Status:** Hackathon submission build complete. All core features working end-to-end. Phase C polish complete. Deferred phases are post-submission improvements.
+**Status:** Post-audit build. All three green-lit features shipped; corpus re-ingested with regulator tags and the fixed chunker (13 PDFs).
 
 ## Locked Decisions
 
@@ -210,7 +230,7 @@ Never commit `.env`, `backend/data/regulations/*.pdf`, or `frontend/.env.local`.
 All PDFs live in `backend/data/regulations/` (not in git — large files). After adding new PDFs, re-run `python -m app.ingest --dir data/regulations` to re-index.
 
 **SAMA (Saudi Central Bank)** — https://rulebook.sama.gov.sa (English PDFs, publicly available)
-8 PDFs currently indexed (618 chunks):
+8 PDFs indexed (5,432 chunks, corpus tag `sama`):
 - `All_Financial_Institutions_SAMA_Rulebook.pdf`
 - `Banking_Sector_SAMA_Rulebook.pdf`
 - `Credit_Bureaus_SAMA_Rulebook.pdf`
@@ -220,28 +240,37 @@ All PDFs live in `backend/data/regulations/` (not in git — large files). After
 - `Payment_Systems_and_Payment_Services_Providers_SAMA_Rulebook.pdf`
 - `Regulatory_Sandbox_SAMA_Rulebook.pdf`
 
-**SDAIA (Personal Data Protection)** — https://sdaia.gov.sa — PDFs to be added (not yet indexed):
-- `PDPL_Personal_Data_Protection_Law.pdf` — The articles of the PDPL
-- `PDPL_Implementing_Regulation.pdf` — Implementing Regulation of the PDPL
-- `PDPL_Cross_Border_Transfer_Regulation.pdf` — Regulation on Personal Data Transfer Outside the Kingdom
+**SDAIA (Personal Data Protection)** — https://sdaia.gov.sa — 3 PDFs indexed (130 chunks, corpus tag `pdpl`):
+- `PersonalDataProtectionLaw.pdf`, `ImplementingRegulationPersonalDataProtectionLaw.pdf`, `RegulationonPersonalData.pdf`
 
-**AAOIFI (Shariah Standards)** — PDFs to be added (not yet indexed):
-- `AAOIFI_Shariah_Standards.pdf` — AAOIFI Shariah Standards for Islamic finance products
+**AAOIFI (Shariah Standards)** — 1 PDF indexed (3,334 chunks, corpus tag `shariah`):
+- `Shariaa-Standards-ENG.pdf`
+
+**CMA (Capital Market Authority)** — 1 PDF indexed (212 chunks, corpus tag `cma`):
+- `CapitalMarketInstitutionsRegulations.pdf`
+
+Corpus tags are inferred from filenames in `ingest.py::corpus_for_filename` — new PDFs whose names don't match any rule land in corpus `other` (never silently attributed to SAMA).
 
 **After adding new PDFs:** Re-run ingest. The chunk count will increase. Update the startup health check expected count in `backend/app/main.py` if you hardcoded it anywhere.
 
 ## Quality Targets
 
-**Measured (20-product eval run, 2026-07-02):**
-- 20/20 products produced valid structured output (0 failures)
-- Source faithfulness: not captured in stored run (private fields were stripped) — needs re-run to measure
-- Response time avg: ~76.5s | P95: ~100s (inherent to Claude API for 8192-token structured output)
+**Measured (20-product eval, 2026-07-04, v2 pipeline, limit=12, full 9,108-chunk corpus):**
+- 20/20 valid structured output (0 failures)
+- **Source faithfulness: 1.000** (159/159) — by construction (backend injects sources from retrieved chunks)
+- **Quote faithfulness: 1.000** (159/159; was **0.432** before A-1) — by construction; this is the before/after
+  story for the "data analysis" judging axis
+- Latency: **avg 56.7s, P95 70.1s** (was 82.6s / 105.8s) — plus streaming: retrieved articles on screen ~1s,
+  first finding ~15s (perceived latency)
+- Scores: deterministic, spread 5–66 with no clustering (was 12/20 at exactly 62). NOTE: the current penalty
+  weights in `scoring.py` are strict — needs_review-heavy products land in "high risk" often. If calibration
+  feels harsh in demos, tune `_PENALTY` in ONE place (e.g. needs_review 8/5/3 → 5/3/2) — no prompt changes needed.
 
-**Aspirational (post-hackathon):**
-- Source Faithfulness: > 92% (manual metric in `eval_run.py` — NOT RAGAS, which is incompatible with Anthropic)
-- Response time: < 10s (requires caching layer or prompt optimization)
-
-**Note:** RAGAS is NOT used and will NOT work — it hardcodes OpenAI's instructor adapter and rejects Anthropic clients at runtime. Use the manual `compute_faithfulness()` in `backend/tests/eval_run.py`.
+**Eval harness notes:**
+- Run from `backend/`: `$env:PYTHONUTF8="1"; python -m tests.eval_run` (UTF-8 flag required on Windows consoles)
+- Results persist to `tests/eval_results.json` under the `faithfulness` key (both metrics + per-finding
+  unfaithful-quote list). RAGAS is NOT used and will NOT work — it hardcodes OpenAI's instructor adapter and
+  rejects Anthropic clients at runtime. Use the manual `compute_faithfulness()` in `backend/tests/eval_run.py`.
 
 ## What NOT to Do
 

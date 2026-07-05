@@ -19,6 +19,24 @@ export type Requirement = {
   title: string;
   text: string;
   keywords: string[];
+  regulator?: string; // SAMA | SDAIA | AAOIFI | CMA
+};
+
+export type Corpus = "sama" | "pdpl" | "shariah" | "cma";
+
+export type RetrievedArticle = {
+  source: string;
+  article: string;
+  title: string;
+  regulator: string;
+};
+
+export type HealthInfo = {
+  status: string;
+  indexed_articles: number;
+  ready: boolean;
+  corpus_version?: string;
+  corpora?: Record<string, number>;
 };
 
 export type Finding = {

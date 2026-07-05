@@ -1,24 +1,32 @@
 import { NextRequest, NextResponse } from "next/server";
-import { mockConsultation } from "@/lib/mockCompliance";
 
 const BACKEND_URL = process.env.BACKEND_URL;
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
 
-  if (BACKEND_URL) {
-    try {
-      const res = await fetch(`${BACKEND_URL}/api/chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(20_000),
-      });
-      if (res.ok) return NextResponse.json(await res.json());
-    } catch (e) {
-      console.error("[/api/chat] Backend unreachable, falling back to mock:", e);
-    }
+  if (!BACKEND_URL) {
+    return NextResponse.json(
+      { detail: "BACKEND_URL is not configured — start the FastAPI backend and set BACKEND_URL." },
+      { status: 503 },
+    );
   }
 
-  return NextResponse.json(mockConsultation(body.query));
+  try {
+    const res = await fetch(`${BACKEND_URL}/api/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(60_000),
+    });
+    if (res.ok) return NextResponse.json(await res.json());
+    const err = await res.json().catch(() => ({}));
+    return NextResponse.json(err, { status: res.status });
+  } catch (e) {
+    console.error("[/api/chat] Backend unreachable:", e);
+    return NextResponse.json(
+      { detail: "Regulatory chat backend is unreachable." },
+      { status: 502 },
+    );
+  }
 }

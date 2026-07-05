@@ -99,43 +99,40 @@ First run downloads `multilingual-e5-large` (~1.1 GB). Expected output: `Indexed
 
 ```powershell
 cd backend
-uvicorn app.main:app --reload --port 8000 --host 0.0.0.0
+$env:PYTHONUTF8 = "1"
+uvicorn app.main:app --port 8001 --host 0.0.0.0
 ```
 
-Verify: `http://127.0.0.1:8000/health` → `{"status":"ok","indexed_articles":618,"ready":true}`
+Verify: `http://127.0.0.1:8001/health` → `{"status":"ok","indexed_articles":<N>,"ready":true,"corpus_version":"2026-07","corpora":{"sama":...,"pdpl":...,"shariah":...,"cma":...}}`
 
 ### 5. Start frontend
 
 ```powershell
 cd frontend
 npm install
-$env:BACKEND_URL = "http://127.0.0.1:8000"
 npm run dev
 ```
 
-Open `http://localhost:3000`.
+`frontend/.env.local` sets `BACKEND_URL=http://127.0.0.1:8001` and `PORT=3002`. Open `http://localhost:3002`.
 
-> **Windows note:** Set `BACKEND_URL` in the same PowerShell session as `npm run dev`. Do not use `http://localhost:8000` — use `127.0.0.1` to avoid IPv6 resolution issues.
+> **One-shot alternative:** `./start-demo.ps1` from the repo root boots Qdrant, backend, and frontend with health checks at every layer.
+>
+> **Windows note:** Use `127.0.0.1` rather than `localhost` in `BACKEND_URL` to avoid IPv6 resolution issues. Ports 8001/3002 are used because 8000/3000 may be occupied on the dev machine.
 
 ---
 
 ## Running the Evaluation
 
-Tests ComplyX against 20 synthetic Saudi fintech product descriptions, measuring latency and RAGAS Faithfulness using Claude Haiku as the judge LLM.
+Tests ComplyX against 20 synthetic Saudi fintech product descriptions, measuring latency plus two manual faithfulness metrics: **source faithfulness** (does each finding cite a retrieved regulation?) and **quote faithfulness** (does the verbatim text shown in the UI actually appear in a retrieved chunk?). Both are 1.0 by construction since the backend injects citations from the retrieved chunks (server-side quote injection).
 
 ```powershell
-# Install eval dependencies (once)
-pip install ragas datasets
-
 # Smoke test — first 2 products
 cd backend
+$env:PYTHONUTF8 = "1"
 python -m tests.eval_run --limit 2
 
 # Full 20-product run
 python -m tests.eval_run
-
-# Latency + coverage only, skip RAGAS
-python -m tests.eval_run --no-ragas
 ```
 
 Results are printed to the terminal and saved to `backend/tests/eval_results.json`. LangSmith traces appear at https://smith.langchain.com under the configured project.
@@ -146,18 +143,27 @@ Results are printed to the terminal and saved to `backend/tests/eval_results.jso
 
 ### `POST /api/check`
 
-Runs a full compliance scan.
+Runs a full compliance scan (non-streaming).
 
 ```json
 {
   "product_description": "string (min 20 chars)",
   "product_type": "payment_services | consumer_finance | open_banking | general | aml | pdpl",
   "tone": "simple | executive | technical",
-  "lang": "ar | en"
+  "lang": "ar | en",
+  "corpora": ["sama", "pdpl", "shariah", "cma"]
 }
 ```
 
-Returns a `ComplianceResult` — see `backend/app/models.py` and `frontend/lib/types.ts` (kept in sync).
+`corpora` is optional (omit = search everything). Returns a `ComplianceResult` — see `backend/app/models.py` and `frontend/lib/types.ts` (kept in sync). The compliance score is computed deterministically from finding statuses/risks (`backend/app/scoring.py`); every finding carries the verbatim regulation text injected server-side from the retrieved chunk.
+
+### `POST /api/check/stream`
+
+Same request body; responds with Server-Sent Events: `retrieved` (the matched articles, within ~1s), then one `finding` event per finding as the model writes it, then `complete` with the full `ComplianceResult` (identical contract to `/api/check`), or `error`.
+
+### `POST /api/report-pdf`
+
+`{ "result": ComplianceResult, "lang": "ar|en", "product_label": "string" }` → branded bilingual PDF (Remediation Roadmap + full findings). Requires Playwright Chromium; returns 501 with install instructions otherwise.
 
 ### `POST /api/chat`
 

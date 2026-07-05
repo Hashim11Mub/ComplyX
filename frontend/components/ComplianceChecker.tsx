@@ -1,8 +1,16 @@
 "use client";
 
 import { ChangeEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
-import { checkCompliance, getProductQuestions } from "@/lib/api";
-import type { ComplianceResult, ClarifyQuestion, ProductType as BackendProductType } from "@/lib/types";
+import { askConsultant, checkCompliance, downloadPdfReport, fetchHealth, getProductQuestions, streamCheck } from "@/lib/api";
+import type {
+  ComplianceResult,
+  ClarifyQuestion,
+  Corpus,
+  Finding,
+  HealthInfo,
+  ProductType as BackendProductType,
+  RetrievedArticle
+} from "@/lib/types";
 
 type Lang = "ar" | "en";
 type Mode = "describe" | "upload" | "voice";
@@ -122,10 +130,29 @@ const STEP_DEFS: StepDef[] = [
 ];
 
 
-const CANNED_REPLY_AR =
-  "بخصوص سؤالك: يمكنني مساعدتك في فهم نتائج الفحص أو أي مادة تنظيمية محددة. اسألني عن أي بند من نتائج التقرير وسأشرحه لك بالتفصيل.";
-const CANNED_REPLY_EN =
-  "Regarding your question: I can help you understand the scan findings or any specific regulatory article. Ask me about any item in the report and I will explain it in detail.";
+const CHAT_ERROR_AR = "تعذر الوصول إلى المستشار التنظيمي الآن. تأكد من تشغيل الخادم وحاول مرة أخرى.";
+const CHAT_ERROR_EN = "Could not reach the regulatory consultant. Make sure the backend is running and try again.";
+
+const WAIT_STATUS_EN = [
+  "Cross-referencing retrieved articles…",
+  "Weighing compliance evidence…",
+  "Assessing gaps and risk levels…",
+  "Drafting findings and recommendations…"
+];
+const WAIT_STATUS_AR = [
+  "مطابقة المواد التنظيمية المسترجعة…",
+  "تقييم أدلة الامتثال…",
+  "تحديد الثغرات ومستويات المخاطر…",
+  "صياغة النتائج والتوصيات…"
+];
+
+const CORPUS_DEFS: Array<{ id: Corpus; en: string; ar: string }> = [
+  { id: "sama", en: "SAMA", ar: "ساما" },
+  { id: "pdpl", en: "PDPL · SDAIA", ar: "حماية البيانات" },
+  { id: "shariah", en: "Shariah · AAOIFI", ar: "المعايير الشرعية" },
+  { id: "cma", en: "CMA", ar: "هيئة السوق" }
+];
+const ALL_CORPORA: Corpus[] = ["sama", "pdpl", "shariah", "cma"];
 
 const DISCLAIMER_AR = "هذا تقرير تحليلي مبني على وثائق تنظيمية متاحة للعموم ولا يُعدّ رأياً قانونياً نهائياً.";
 const DISCLAIMER_EN = "This is an analytical report based on publicly available regulatory documents and does not constitute final legal advice.";
@@ -150,6 +177,7 @@ export default function ComplianceChecker() {
   const [uploadedFile, setUploadedFile] = useState<UploadedFile | null>(null);
   const [recording, setRecording] = useState(false);
   const [transcript, setTranscript] = useState("");
+  const [voiceError, setVoiceError] = useState<string | null>(null);
   const [complexity, setComplexity] = useState<Complexity>("executive");
   const [activeStep, setActiveStep] = useState(0);
   const [doneFlags, setDoneFlags] = useState([false, false, false, false]);
@@ -161,13 +189,10 @@ export default function ComplianceChecker() {
   const [dialDisplay, setDialDisplay] = useState(0);
   const [expandedFindingId, setExpandedFindingId] = useState<string | null>(null);
   const [refNumber, setRefNumber] = useState("");
-  const [expiryTs, setExpiryTs] = useState(0);
   const [chatOpen, setChatOpen] = useState(false);
   const [chatInputValue, setChatInputValue] = useState("");
   const [chatTyping, setChatTyping] = useState(false);
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([
-    { id: 1, fromUser: false, text: "مرحبًا، أنا مساعد ComplyX. اسألني عن أي مادة نظامية أو نتيجة فحص وسأشرحها لك." }
-  ]);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
 
   const [clarifyQuestions, setClarifyQuestions] = useState<ClarifyQuestion[]>([]);
   const [clarifyAnswers, setClarifyAnswers] = useState<Record<string, string[]>>({});
@@ -177,12 +202,21 @@ export default function ComplianceChecker() {
   const [uploadExtracting, setUploadExtracting] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
+  const [scanSeconds, setScanSeconds] = useState(0);
+  const [waitMsgIdx, setWaitMsgIdx] = useState(0);
+  const [selectedCorpora, setSelectedCorpora] = useState<Corpus[]>(ALL_CORPORA);
+  const [liveFindings, setLiveFindings] = useState<Finding[]>([]);
+  const [retrievedArticles, setRetrievedArticles] = useState<RetrievedArticle[]>([]);
+  const [health, setHealth] = useState<HealthInfo | null>(null);
+  const [clarifiedCount, setClarifiedCount] = useState(0);
+  const [scanDate, setScanDate] = useState("");
+  const [pdfBusy, setPdfBusy] = useState(false);
+
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const intervals = useRef<ReturnType<typeof setInterval>[]>([]);
   const rafRef = useRef<number | null>(null);
   const scrollRafRef = useRef<number | null>(null);
-  const apiResultRef = useRef<ComplianceResult | null>(null);
-  const animationFinishedRef = useRef(false);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recognitionRef = useRef<any>(null);
 
@@ -205,6 +239,16 @@ export default function ComplianceChecker() {
   }, [dirAttr, lang]);
 
   useEffect(() => {
+    // Live backend badge in the topbar (audit A-2): poll /health so judges
+    // can see the system is real — and so a dead backend is visible instantly.
+    let cancelled = false;
+    const load = () => fetchHealth().then((info) => { if (!cancelled) setHealth(info); });
+    load();
+    const interval = setInterval(load, 30_000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, []);
+
+  useEffect(() => {
     return () => {
       clearTimers();
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
@@ -216,6 +260,8 @@ export default function ComplianceChecker() {
   function clearTimers() {
     timers.current.forEach((timer) => clearTimeout(timer));
     timers.current = [];
+    intervals.current.forEach((interval) => clearInterval(interval));
+    intervals.current = [];
   }
 
   function animateScrollTo(target: number, duration: number) {
@@ -336,7 +382,7 @@ export default function ComplianceChecker() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const SpeechAPI = (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition;
     if (!SpeechAPI) {
-      setTranscript(
+      setVoiceError(
         isAr
           ? "المتصفح لا يدعم التعرف على الصوت. استخدم Chrome أو Edge."
           : "Voice recognition is not supported in this browser. Please use Chrome or Edge."
@@ -374,7 +420,7 @@ export default function ComplianceChecker() {
           event.error === "not-allowed"
             ? t("Microphone permission was denied", "لم يُمنح إذن الميكروفون")
             : t("Voice recognition error. Please try again.", "حدث خطأ في التعرف على الصوت. حاول مرة أخرى.");
-        setTranscript(msg);
+        setVoiceError(msg);
       }
       setRecording(false);
     };
@@ -385,6 +431,7 @@ export default function ComplianceChecker() {
 
     setRecording(true);
     setTranscript("");
+    setVoiceError(null);
     final = "";
     recognition.start();
   }
@@ -392,8 +439,6 @@ export default function ComplianceChecker() {
   async function startScan() {
     if (!canScan) return;
     clearTimers();
-    apiResultRef.current = null;
-    animationFinishedRef.current = false;
     setScanError(null);
     setComplianceResult(null);
     setClarifyQuestions([]);
@@ -420,37 +465,54 @@ export default function ComplianceChecker() {
     setActiveStep(0);
     setDoneFlags([false, false, false, false]);
     setRevealedCount(0);
+    setScanSeconds(0);
+    setWaitMsgIdx(0);
+    setLiveFindings([]);
+    setRetrievedArticles([]);
     const scrollTimer = setTimeout(() => scrollToId("scan"), 80);
     timers.current.push(scrollTimer);
 
+    intervals.current.push(setInterval(() => setScanSeconds((s) => s + 1), 1000));
+    intervals.current.push(setInterval(() => setWaitMsgIdx((i) => i + 1), 4500));
+
     const productType: BackendProductType = selectedProduct ? (PRODUCT_TYPE_MAP[selectedProduct] ?? "general") : "general";
 
-    checkCompliance(desc, productType, complexity, lang).then((result) => {
-      apiResultRef.current = result;
-      if (animationFinishedRef.current) finishScan(result);
-    }).catch(() => {
+    const onScanError = () => {
+      clearTimers();
       setScanError(isAr ? "تعذر الاتصال بالخادم. تأكد من تشغيل الواجهة الخلفية." : "Could not reach the backend. Make sure it is running.");
       setAppState("input");
-    });
+    };
 
+    // Streaming first (real retrieval + findings fill the slots as Claude
+    // writes them); the plain POST /api/check path is the fallback.
+    streamCheck(desc, productType, complexity, lang, selectedCorpora, {
+      onRetrieved: (articles) => setRetrievedArticles(articles.slice(0, 8)),
+      onFinding: (finding) => setLiveFindings((current) => [...current, finding])
+    })
+      .then((result) => {
+        setDoneFlags([true, true, true, true]);
+        finishScan(result);
+      })
+      .catch(() => {
+        checkCompliance(desc, productType, complexity, lang, selectedCorpora)
+          .then((result) => {
+            setDoneFlags([true, true, true, true]);
+            finishScan(result);
+          })
+          .catch(onScanError);
+      });
+
+    // Steps 1-3 animate on timers; step 4 stays active until the real
+    // API result arrives, so the UI never claims a report that isn't ready.
     const stepDuration = 950;
-    for (let index = 0; index < 4; index += 1) {
+    for (let index = 0; index < 3; index += 1) {
       const timer = setTimeout(() => {
         setDoneFlags((current) => {
           const next = [...current];
           next[index] = true;
           return next;
         });
-        if (index < 3) setActiveStep(index + 1);
-        if (index === 3) {
-          const waitTimer = setTimeout(() => {
-            animationFinishedRef.current = true;
-            if (apiResultRef.current) {
-              finishScan(apiResultRef.current);
-            }
-          }, 600);
-          timers.current.push(waitTimer);
-        }
+        setActiveStep(index + 1);
       }, stepDuration * (index + 1));
       timers.current.push(timer);
     }
@@ -487,19 +549,32 @@ export default function ComplianceChecker() {
   }
 
   function submitClarifications() {
+    setClarifiedCount(Object.values(clarifyAnswers).filter((values) => values.length > 0).length);
     runActualScan(buildAugmentedDescription());
   }
 
+  function toggleCorpus(corpus: Corpus) {
+    setSelectedCorpora((current) => {
+      if (current.includes(corpus)) {
+        const next = current.filter((c) => c !== corpus);
+        return next.length > 0 ? next : current; // keep at least one selected
+      }
+      return [...current, corpus];
+    });
+  }
+
   function finishScan(result: ComplianceResult) {
+    clearTimers();
     const ref = `CX-2026-${Math.floor(10000 + Math.random() * 89999)}`;
     // Fill slots with real finding data immediately so user can read them
     setComplianceResult(result);
     setRevealedCount(6);
+    setScanDate(new Date().toLocaleDateString(isAr ? "ar-SA" : "en-GB", { day: "numeric", month: "short", year: "numeric" }));
+    fetchHealth().then(setHealth);
     // Hold on the scan view for 2.5s so the real articles are readable, then transition
     const transitionTimer = setTimeout(() => {
       setAppState("results");
       setRefNumber(ref);
-      setExpiryTs(Date.now() + 90 * 86_400_000);
       setDialOffset(CIRCUMFERENCE);
       setDialDisplay(0);
       const scrollTimer = setTimeout(() => scrollToId("report"), 90);
@@ -530,8 +605,6 @@ export default function ComplianceChecker() {
   function resetToInput() {
     clearTimers();
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    apiResultRef.current = null;
-    animationFinishedRef.current = false;
     setAppState("input");
     setActiveStep(0);
     setDoneFlags([false, false, false, false]);
@@ -545,8 +618,12 @@ export default function ComplianceChecker() {
     setClarifyAnswers({});
     setClarifyLoading(false);
     setSubmittedDesc("");
+    setLiveFindings([]);
+    setRetrievedArticles([]);
+    setClarifiedCount(0);
     recognitionRef.current?.stop();
     setRecording(false);
+    setVoiceError(null);
     const timer = setTimeout(() => scrollToId("input"), 80);
     timers.current.push(timer);
   }
@@ -587,19 +664,25 @@ export default function ComplianceChecker() {
     }
   }
 
-  function sendChat() {
+  async function sendChat() {
     const text = chatInputValue.trim();
-    if (!text) return;
+    if (!text || chatTyping) return;
     const userMessage = { id: Date.now(), fromUser: true, text };
+    const history = [...chatMessages, userMessage].map((message) => ({
+      role: message.fromUser ? ("user" as const) : ("assistant" as const),
+      content: message.text
+    }));
     setChatMessages((current) => [...current, userMessage]);
     setChatInputValue("");
     setChatTyping(true);
-    const timer = setTimeout(() => {
-      const reply = isAr ? CANNED_REPLY_AR : CANNED_REPLY_EN;
-      setChatMessages((current) => [...current, { id: Date.now() + 1, fromUser: false, text: reply }]);
+    try {
+      const response = await askConsultant(text, history);
+      setChatMessages((current) => [...current, { id: Date.now() + 1, fromUser: false, text: response.answer }]);
+    } catch {
+      setChatMessages((current) => [...current, { id: Date.now() + 1, fromUser: false, text: isAr ? CHAT_ERROR_AR : CHAT_ERROR_EN }]);
+    } finally {
       setChatTyping(false);
-    }, 1300);
-    timers.current.push(timer);
+    }
   }
 
   function onChatKey(event: KeyboardEvent<HTMLInputElement>) {
@@ -690,22 +773,23 @@ export default function ComplianceChecker() {
   const reviewCount = complianceResult?.findings.filter((f) => f.status === "needs_review").length ?? 0;
   const rc = Math.min(revealedCount, 6);
   const nextSlot = appState === "scanning" && rc < 6 ? rc : -1;
-  const expiryDate = expiryTs
-    ? new Date(expiryTs).toLocaleDateString(isAr ? "ar-SA" : "en-GB", { day: "numeric", month: "short", year: "numeric" })
-    : "";
-  // When results are in, use actual finding count; during scan show 6 shimmer slots
-  const slotCount = complianceResult ? complianceResult.findings.length : 6;
-  const displayCount = complianceResult ? complianceResult.findings.length : rc;
+  // Slot sources, in priority order: final result findings → findings
+  // streamed so far → retrieved article titles → shimmer placeholders.
+  const slotCount = complianceResult
+    ? complianceResult.findings.length
+    : Math.max(retrievedArticles.length > 0 ? Math.min(retrievedArticles.length, 8) : 6, liveFindings.length);
+  const displayCount = complianceResult ? complianceResult.findings.length : liveFindings.length;
   const sectionSlots = Array.from({ length: slotCount }, (_, slotIndex) => {
-    const finding = complianceResult?.findings[slotIndex] ?? null;
-    const scanFilled = !complianceResult && slotIndex < rc;
+    const finding = complianceResult?.findings[slotIndex] ?? liveFindings[slotIndex] ?? null;
+    const retrieved = !finding ? retrievedArticles[slotIndex] ?? null : null;
+    const scanFilled = !complianceResult && !finding && !retrieved && slotIndex < rc;
     const dot = finding
       ? finding.status === "gap" ? "#ff9a8f" : finding.status === "needs_review" ? "#f3d08a" : "#8fe8df"
       : "#8fe8df";
     const halo = finding
       ? finding.status === "gap" ? "rgba(255,154,143,0.2)" : finding.status === "needs_review" ? "rgba(243,208,138,0.2)" : "rgba(143,232,223,0.2)"
       : "rgba(143,232,223,0.2)";
-    return { finding, scanFilled, isNext: slotIndex === nextSlot, dot, halo };
+    return { finding, retrieved, scanFilled, isNext: slotIndex === nextSlot, dot, halo };
   });
 
   return (
@@ -719,16 +803,20 @@ export default function ComplianceChecker() {
           </div>
         </div>
         <div className="cx-topbar-actions">
-          <div className="cx-status-pill">
+          <div className={`cx-status-pill${health && !health.ready ? " is-off" : ""}`}>
             <span />
-            {t("KSA Regs · Live", "اللوائح السعودية · محدّث")}
+            {health === null
+              ? t("Connecting…", "جارٍ الاتصال…")
+              : health.ready
+                ? `${t("KSA Regs · Live", "اللوائح السعودية · محدّث")} · ${health.indexed_articles.toLocaleString()}`
+                : t("Backend offline", "الخادم غير متصل")}
           </div>
           <div className="cx-lang-toggle">
             <div className={`cx-lang-indicator${isAr ? " is-ar" : ""}`} />
-            <button className={`cx-lang-btn${!isAr ? " is-active" : ""}`} onClick={() => handleLangChange("en")} type="button">
+            <button className={`cx-lang-btn${!isAr ? " is-active" : ""}`} disabled={isRefetching} onClick={() => handleLangChange("en")} type="button">
               EN
             </button>
-            <button className={`cx-lang-btn${isAr ? " is-active" : ""}`} onClick={() => handleLangChange("ar")} type="button">
+            <button className={`cx-lang-btn${isAr ? " is-active" : ""}`} disabled={isRefetching} onClick={() => handleLangChange("ar")} type="button">
               AR
             </button>
           </div>
@@ -802,6 +890,29 @@ export default function ComplianceChecker() {
               <div className="cx-input-card">
                 {mode === "describe" && (
                   <div className="cx-describe-panel">
+                    <div className="cx-corpora-row">
+                      <span className="cx-section-label">{t("Check against", "الفحص مقابل")}</span>
+                      <div className="cx-corpora-chips">
+                        {CORPUS_DEFS.map((corpus) => {
+                          const active = selectedCorpora.includes(corpus.id);
+                          const count = health?.corpora?.[corpus.id] ?? 0;
+                          const disabled = health !== null && health.ready && count === 0;
+                          return (
+                            <button
+                              className={`cx-corpus-chip${active ? " is-active" : ""}`}
+                              disabled={disabled}
+                              key={corpus.id}
+                              onClick={() => toggleCorpus(corpus.id)}
+                              title={disabled ? t("No articles indexed for this regulator yet", "لا توجد مواد مفهرسة لهذه الجهة بعد") : undefined}
+                              type="button"
+                            >
+                              {active ? <CheckSmall /> : null}
+                              {isAr ? corpus.ar : corpus.en}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
                     <div className="cx-section-label">{t("Product Type", "نوع المنتج")}</div>
                     <div className="cx-product-grid">
                       {PRODUCT_TYPES.map((product) => {
@@ -912,6 +1023,11 @@ export default function ComplianceChecker() {
                           ? t("Transcribed", "تم التفريغ")
                           : t("Tap the mic and describe your product", "انقر الميكروفون وابدأ وصف منتجك")}
                     </div>
+                    {voiceError && (
+                      <div className="cx-voice-error" role="alert">
+                        {voiceError}
+                      </div>
+                    )}
                     {transcript && (
                       <div className="cx-transcript-box">
                         <div>
@@ -928,6 +1044,15 @@ export default function ComplianceChecker() {
                   <SearchMini />
                   {t("Run Compliance Scan", "ابدأ فحص الامتثال")}
                 </button>
+                {!canScan && (
+                  <p className="cx-cta-hint">
+                    {mode === "describe"
+                      ? t("Describe your product above to enable the scan", "اكتب وصف منتجك أعلاه لتفعيل الفحص")
+                      : mode === "upload"
+                        ? t("Upload a product document to enable the scan", "ارفع مستند منتجك لتفعيل الفحص")
+                        : t("Record a voice description to enable the scan", "سجّل وصفاً صوتياً لتفعيل الفحص")}
+                  </p>
+                )}
               </div>
             </div>
           </section>
@@ -1028,6 +1153,11 @@ export default function ComplianceChecker() {
                         const done = doneFlags[index];
                         const active = !done && activeStep === index && appState === "scanning";
                         const pending = !done && !active;
+                        const waitPool = isAr ? WAIT_STATUS_AR : WAIT_STATUS_EN;
+                        const activeSub =
+                          index === 3
+                            ? `${waitPool[waitMsgIdx % waitPool.length]} ${scanSeconds}${t("s", " ث")}`
+                            : isAr ? step.active.ar : step.active.en;
                         return (
                           <div className="cx-step-row" key={step.en}>
                             <div className="cx-step-node-col">
@@ -1047,7 +1177,9 @@ export default function ComplianceChecker() {
                             </div>
                             <div className="cx-step-copy">
                               <div className={`cx-step-label${active ? " is-current" : ""}${done ? " is-done" : ""}`}>{isAr ? step.ar : step.en}</div>
-                              <div className="cx-step-sub">{active ? (isAr ? step.active.ar : step.active.en) : done ? (isAr ? step.done.ar : step.done.en) : ""}</div>
+                              <div className={`cx-step-sub${active && index === 3 ? " is-wait" : ""}`} key={active ? activeSub : done ? "done" : "pending"}>
+                                {active ? activeSub : done ? (isAr ? step.done.ar : step.done.en) : ""}
+                              </div>
                             </div>
                           </div>
                         );
@@ -1064,14 +1196,28 @@ export default function ComplianceChecker() {
                     </div>
                     <div className="cx-section-slots">
                       {sectionSlots.map((slot, index) => (
-                        <div className={`cx-section-slot${(slot.finding || slot.scanFilled) ? " is-filled" : ""}${slot.isNext ? " is-next" : ""}`} key={index}>
+                        <div className={`cx-section-slot${(slot.finding || slot.retrieved || slot.scanFilled) ? " is-filled" : ""}${slot.isNext ? " is-next" : ""}`} key={index}>
                           {slot.finding ? (
                             <div className="cx-slot-content">
                               <div>
-                                <span>{slot.finding.requirement.article}</span>
+                                <span>
+                                  {slot.finding.requirement.regulator ? `${slot.finding.requirement.regulator} · ` : ""}
+                                  {slot.finding.requirement.article}
+                                </span>
                                 <i style={{ background: slot.dot, boxShadow: `0 0 0 4px ${slot.halo}` }} />
                               </div>
-                              <strong dir="rtl">{slot.finding.requirement.title}</strong>
+                              <strong dir="auto">{slot.finding.requirement.title}</strong>
+                            </div>
+                          ) : slot.retrieved ? (
+                            <div className="cx-slot-content is-retrieved">
+                              <div>
+                                <span>
+                                  {slot.retrieved.regulator ? `${slot.retrieved.regulator} · ` : ""}
+                                  {slot.retrieved.article}
+                                </span>
+                                <i className="cx-slot-scan-dot" />
+                              </div>
+                              <strong dir="auto">{slot.retrieved.title || slot.retrieved.source}</strong>
                             </div>
                           ) : slot.scanFilled ? (
                             <div className="cx-slot-content">
@@ -1149,18 +1295,29 @@ export default function ComplianceChecker() {
                     </div>
                     <div className="cx-report-meta">
                       <div>
-                        <span>{t("Reference No.", "الرقم المرجعي")}</span>
+                        <span>{t("Session reference", "المرجع الجلسي")}</span>
                         <strong>{refNumber}</strong>
                       </div>
                       <div>
                         <span>
                           <ClockMini />
-                          {t("Auto-archive on", "يُؤرشف تلقائياً في")}
+                          {t("Scan date", "تاريخ الفحص")}
                         </span>
-                        <strong>{expiryDate}</strong>
+                        <strong>{scanDate}</strong>
                       </div>
                     </div>
-                    <p>{t("After this date the scanned product is moved to long-term archive and removed from active storage.", "بعد هذا التاريخ يُنقل المنتج المفحوص إلى الأرشيف طويل المدى ويُزال من التخزين النشط.")}</p>
+                    <p>
+                      {t(
+                        `Checked against ${health?.indexed_articles?.toLocaleString() ?? "—"} indexed regulatory articles · Corpus ${health?.corpus_version ?? ""}`,
+                        `تم الفحص مقابل ${health?.indexed_articles?.toLocaleString("ar-SA") ?? "—"} مادة تنظيمية مفهرسة · إصدار القاعدة ${health?.corpus_version ?? ""}`
+                      )}
+                    </p>
+                    {clarifiedCount > 0 && (
+                      <div className="cx-clarified-chip">
+                        <CheckSmall />
+                        {t(`Includes ${clarifiedCount} clarified detail${clarifiedCount > 1 ? "s" : ""} from the interview`, `يتضمن ${clarifiedCount} ${clarifiedCount > 1 ? "تفاصيل موضحة" : "تفصيلاً موضحاً"} من المقابلة`)}
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -1171,7 +1328,7 @@ export default function ComplianceChecker() {
                   </div>
                   <div>
                     {complexityDefs.map((item) => (
-                      <button className={complexity === item.id ? "is-active" : ""} key={item.id} onClick={() => handleComplexityChange(item.id)} type="button">
+                      <button className={complexity === item.id ? "is-active" : ""} disabled={isRefetching} key={item.id} onClick={() => handleComplexityChange(item.id)} type="button">
                         {item.label}
                       </button>
                     ))}
@@ -1197,7 +1354,7 @@ export default function ComplianceChecker() {
                   </div>
                   <div className="cx-findings-list">
                     {(complianceResult?.findings ?? []).map((finding, idx) => {
-                      const findingKey = finding.requirement.id;
+                      const findingKey = `${finding.requirement.id}-${idx}`;
                       const expanded = expandedFindingId === findingKey;
                       const compliant = finding.status === "compliant";
                       const barColor = finding.status === "gap" ? "#b42318" : finding.status === "needs_review" ? "#a15c09" : "#147a5b";
@@ -1210,7 +1367,8 @@ export default function ComplianceChecker() {
                             <span className="cx-finding-num">{findingNum}</span>
                             <span style={{ background: badgeBg, color: barColor }}>{statusLabel}</span>
                             <em>{finding.requirement.article}</em>
-                            <strong dir="rtl">{finding.requirement.title}</strong>
+                            {finding.requirement.regulator && <span className="cx-reg-tag">{finding.requirement.regulator}</span>}
+                            <strong dir="auto">{finding.requirement.title}</strong>
                             <ChevronMini expanded={expanded} />
                           </button>
                           <div className={`cx-finding-body${expanded ? " is-expanded" : ""}`}>
@@ -1226,7 +1384,7 @@ export default function ComplianceChecker() {
                                   <span>{finding.requirement.article}</span>
                                 </div>
                                 {finding.requirement.text && (
-                                  <div className="cx-reg-verbatim" dir="rtl">
+                                  <div className="cx-reg-verbatim" dir="auto">
                                     {finding.requirement.text}
                                   </div>
                                 )}
@@ -1247,10 +1405,31 @@ export default function ComplianceChecker() {
                   <p className="cx-disclaimer" dir={dirAttr}>{isAr ? DISCLAIMER_AR : DISCLAIMER_EN}</p>
                 )}
 
-                <button className="cx-download-btn" onClick={downloadReport} type="button">
-                  <DownloadMini />
-                  {t("Download Report", "تحميل التقرير")}
-                </button>
+                <div className="cx-report-actions">
+                  <button
+                    className="cx-download-btn is-primary"
+                    disabled={pdfBusy}
+                    onClick={async () => {
+                      if (!complianceResult) return;
+                      setPdfBusy(true);
+                      try {
+                        await downloadPdfReport(complianceResult, lang, productName);
+                      } catch {
+                        downloadReport(); // graceful fallback to the plain-text export
+                      } finally {
+                        setPdfBusy(false);
+                      }
+                    }}
+                    type="button"
+                  >
+                    <DownloadMini />
+                    {pdfBusy ? t("Preparing PDF…", "جارٍ تجهيز PDF…") : t("Download PDF Report", "تحميل تقرير PDF")}
+                  </button>
+                  <button className="cx-download-btn" onClick={downloadReport} type="button">
+                    <DownloadMini />
+                    {t("Text version", "نسخة نصية")}
+                  </button>
+                </div>
               </div>
             </section>
           )}
@@ -1279,6 +1458,19 @@ export default function ComplianceChecker() {
           </button>
         </div>
         <div className="cx-chat-messages">
+          <div className="cx-msg-row">
+            <div>
+              <span>
+                <ShieldChatMini />
+              </span>
+              <p dir={dirAttr}>
+                {t(
+                  "Hello, I am the ComplyX assistant. Ask me about any regulatory article or scan finding and I will explain it.",
+                  "مرحبًا، أنا مساعد ComplyX. اسألني عن أي مادة نظامية أو نتيجة فحص وسأشرحها لك."
+                )}
+              </p>
+            </div>
+          </div>
           {chatMessages.map((message) => (
             <div className={`cx-msg-row${message.fromUser ? " is-user" : ""}`} key={message.id}>
               <div>
@@ -1287,7 +1479,7 @@ export default function ComplianceChecker() {
                     <ShieldChatMini />
                   </span>
                 )}
-                <p dir="rtl">{message.text}</p>
+                <p dir="auto">{message.text}</p>
               </div>
             </div>
           ))}

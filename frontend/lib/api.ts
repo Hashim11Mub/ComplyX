@@ -1,18 +1,107 @@
-import { ComplianceResult, ClarifyResponse, ProductType } from "./types";
+import { ComplianceResult, ClarifyResponse, Corpus, Finding, HealthInfo, ProductType, RetrievedArticle } from "./types";
 
 export async function checkCompliance(
   product_description: string,
   product_type: ProductType,
   tone: "simple" | "executive" | "technical" = "executive",
-  lang: "ar" | "en" = "ar"
+  lang: "ar" | "en" = "ar",
+  corpora?: Corpus[]
 ) {
   const response = await fetch("/api/check", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ product_description, product_type, tone, lang })
+    body: JSON.stringify({ product_description, product_type, tone, lang, corpora })
   });
   if (!response.ok) throw new Error("تعذر تنفيذ فحص الامتثال");
   return (await response.json()) as ComplianceResult;
+}
+
+type StreamHandlers = {
+  onRetrieved?: (articles: RetrievedArticle[]) => void;
+  onFinding?: (finding: Finding) => void;
+};
+
+/**
+ * Streaming scan (SSE over fetch). Resolves with the full ComplianceResult;
+ * rejects on any transport or backend error so the caller can fall back to
+ * the non-streaming checkCompliance().
+ */
+export async function streamCheck(
+  product_description: string,
+  product_type: ProductType,
+  tone: "simple" | "executive" | "technical",
+  lang: "ar" | "en",
+  corpora: Corpus[] | undefined,
+  handlers: StreamHandlers
+): Promise<ComplianceResult> {
+  const response = await fetch("/api/check-stream", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ product_description, product_type, tone, lang, corpora })
+  });
+  if (!response.ok || !response.body) throw new Error(`stream unavailable (${response.status})`);
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let result: ComplianceResult | null = null;
+
+  const handleLine = (line: string) => {
+    if (!line.startsWith("data:")) return;
+    const payload = JSON.parse(line.slice(5).trim());
+    if (payload.event === "retrieved") handlers.onRetrieved?.(payload.articles as RetrievedArticle[]);
+    else if (payload.event === "finding") handlers.onFinding?.(payload.finding as Finding);
+    else if (payload.event === "complete") result = payload.result as ComplianceResult;
+    else if (payload.event === "error") throw new Error(payload.detail ?? "stream error");
+  };
+
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let boundary = buffer.indexOf("\n\n");
+    while (boundary >= 0) {
+      const chunk = buffer.slice(0, boundary).trim();
+      buffer = buffer.slice(boundary + 2);
+      if (chunk) handleLine(chunk);
+      boundary = buffer.indexOf("\n\n");
+    }
+  }
+
+  if (!result) throw new Error("stream ended without a result");
+  return result;
+}
+
+export async function fetchHealth(): Promise<HealthInfo | null> {
+  try {
+    const response = await fetch("/api/health");
+    if (!response.ok) return null;
+    return (await response.json()) as HealthInfo;
+  } catch {
+    return null;
+  }
+}
+
+export async function downloadPdfReport(
+  result: ComplianceResult,
+  lang: "ar" | "en",
+  product_label: string
+): Promise<void> {
+  const response = await fetch("/api/report-pdf", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ result, lang, product_label })
+  });
+  if (!response.ok) throw new Error(`pdf export failed (${response.status})`);
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = "complyx-report.pdf";
+  document.body.appendChild(anchor);
+  anchor.click();
+  document.body.removeChild(anchor);
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
 }
 
 export async function getProductQuestions(
@@ -41,95 +130,4 @@ export async function askConsultant(query: string, messages: { role: "user" | "a
   });
   if (!response.ok) throw new Error("تعذر إرسال الاستشارة");
   return response.json() as Promise<{ answer: string }>;
-}
-
-type DownloadOptions = {
-  lang?: "ar" | "en";
-  tone?: "executive" | "technical" | "simple";
-};
-
-const downloadCopy = {
-  ar: {
-    dir: "rtl",
-    title: "تقرير فحص الامتثال - ComplyX",
-    summary: "الملخص التنفيذي",
-    stats: "نسبة الامتثال",
-    risk: "مستوى الخطورة",
-    gaps: "الثغرات",
-    tone: "أسلوب التقرير",
-    tones: {
-      executive: "تنفيذي",
-      technical: "تقني",
-      simple: "مبسّط"
-    },
-    headers: ["المرجع", "الحالة", "المخاطر", "التحليل", "التوصية"]
-  },
-  en: {
-    dir: "ltr",
-    title: "ComplyX Compliance Scan Report",
-    summary: "Executive summary",
-    stats: "Compliance score",
-    risk: "Risk level",
-    gaps: "Gaps",
-    tone: "Report tone",
-    tones: {
-      executive: "Executive",
-      technical: "Technical",
-      simple: "Simple"
-    },
-    headers: ["Reference", "Status", "Risk", "Analysis", "Recommendation"]
-  }
-};
-
-export async function downloadReport(result: ComplianceResult, options: DownloadOptions = {}) {
-  const lang = options.lang ?? "ar";
-  const tone = options.tone ?? "executive";
-  const t = downloadCopy[lang];
-  const rows = result.findings
-    .map(
-      (finding) => `
-        <tr>
-          <td>${finding.requirement.source} - ${finding.requirement.article}</td>
-          <td>${finding.status}</td>
-          <td>${finding.risk}</td>
-          <td>${finding.analysis}</td>
-          <td>${finding.recommendation}</td>
-        </tr>`
-    )
-    .join("");
-  const html = `<!doctype html>
-  <html lang="${lang}" dir="${t.dir}">
-    <head>
-      <meta charset="utf-8" />
-      <title>ComplyX Report</title>
-      <style>
-        body{font-family:Arial,Tahoma,sans-serif;margin:32px;color:#172033;line-height:1.65}
-        h1{color:#032341} table{border-collapse:collapse;width:100%}
-        td,th{border:1px solid #d9e0ea;padding:10px;vertical-align:top}
-        th{background:#032341;color:white}
-        .meta{background:#eef6f5;border:1px solid #d9e5e6;border-radius:8px;padding:14px 16px}
-      </style>
-    </head>
-    <body>
-      <h1>${t.title}</h1>
-      <div class="meta">
-        <strong>${t.summary}</strong>
-        <p>${result.executive_summary}</p>
-        <p>${t.tone}: ${t.tones[tone]}</p>
-        <p>${t.stats}: ${result.compliance_score}% | ${t.risk}: ${result.risk_level} | ${t.gaps}: ${result.gaps_count}</p>
-      </div>
-      <table>
-        <thead><tr>${t.headers.map((header) => `<th>${header}</th>`).join("")}</tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
-      <p>${result.disclaimer}</p>
-    </body>
-  </html>`;
-  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = "complyx-report.html";
-  link.click();
-  URL.revokeObjectURL(url);
 }

@@ -73,7 +73,7 @@ def run_single(product: dict) -> dict:
     lang = product.get("lang", "ar")
 
     t0 = time.perf_counter()
-    chunks = search(description, limit=16)
+    chunks = search(description, limit=12)
     retrieve_ms = (time.perf_counter() - t0) * 1000
 
     t1 = time.perf_counter()
@@ -101,40 +101,64 @@ def run_single(product: dict) -> dict:
         # Private fields for faithfulness check (stripped from JSON output)
         "_retrieved_sources": list({c.get("regulation_name", "") for c in chunks}),
         "_finding_sources": [f.requirement.source for f in result.findings],
+        "_retrieved_texts": [c.get("text", "") for c in chunks],
+        "_finding_texts": [f.requirement.text for f in result.findings],
     }
+
+
+def _norm(s: str) -> str:
+    """Collapse all whitespace so verbatim comparison ignores line-wrap differences."""
+    return " ".join(s.split())
 
 
 def compute_faithfulness(rows: list[dict]) -> dict:
     """
-    Source faithfulness: fraction of findings that cite a regulation that was
-    actually in the retrieved chunks for that product.
-    A finding is faithful if its requirement.source matches one of the
-    regulation_name values from the retrieved chunks.
+    Two faithfulness metrics, both computed per finding:
+
+    1. Source faithfulness — requirement.source matches one of the
+       regulation_name values from the retrieved chunks (no invented sources).
+    2. Quote faithfulness — requirement.text (the "verbatim" article text shown
+       in the UI as Regulatory Basis) actually appears inside one of the
+       retrieved chunk texts (whitespace-normalized substring match).
     """
     total_findings = 0
     grounded_findings = 0
+    grounded_quotes = 0
     hallucinated: list[str] = []
+    unfaithful_quotes: list[str] = []
 
     for r in rows:
         retrieved = set(r["_retrieved_sources"])
-        for src in r["_finding_sources"]:
+        chunk_texts = [_norm(t) for t in r.get("_retrieved_texts", [])]
+        finding_texts = r.get("_finding_texts", [])
+        for i, src in enumerate(r["_finding_sources"]):
             total_findings += 1
             if src in retrieved:
                 grounded_findings += 1
             else:
                 hallucinated.append(f"{r['id']}: '{src}'")
 
+            quote = _norm(finding_texts[i]) if i < len(finding_texts) else ""
+            if quote and any(quote in ct for ct in chunk_texts):
+                grounded_quotes += 1
+            else:
+                preview = quote[:80] if quote else "(empty req_text)"
+                unfaithful_quotes.append(f"{r['id']}: {preview}")
+
     if total_findings == 0:
         return {}
 
-    faithfulness = grounded_findings / total_findings
     result = {
-        "source_faithfulness": round(faithfulness, 4),
+        "source_faithfulness": round(grounded_findings / total_findings, 4),
+        "quote_faithfulness": round(grounded_quotes / total_findings, 4),
         "grounded_findings": grounded_findings,
+        "grounded_quotes": grounded_quotes,
         "total_findings": total_findings,
     }
     if hallucinated:
         result["hallucinated_sources"] = hallucinated
+    if unfaithful_quotes:
+        result["unfaithful_quotes"] = unfaithful_quotes
     return result
 
 
@@ -167,11 +191,16 @@ def print_table(rows: list[dict], ragas_scores: dict, indexed: int) -> None:
 
     if ragas_scores:
         sf = ragas_scores.get("source_faithfulness", "n/a")
+        qf = ragas_scores.get("quote_faithfulness", "n/a")
         grounded = ragas_scores.get("grounded_findings", "?")
+        gq = ragas_scores.get("grounded_quotes", "?")
         total = ragas_scores.get("total_findings", "?")
         print(f"  Source faithfulness    : {sf}  ({grounded}/{total} findings cite retrieved sources)")
+        print(f"  Quote faithfulness     : {qf}  ({gq}/{total} verbatim quotes found in retrieved chunks)")
         if ragas_scores.get("hallucinated_sources"):
             print(f"  Hallucinated sources   : {ragas_scores['hallucinated_sources']}")
+        if ragas_scores.get("unfaithful_quotes"):
+            print(f"  Unfaithful quotes      : {len(ragas_scores['unfaithful_quotes'])} (see eval_results.json)")
 
     print("=" * 72 + "\n")
 
@@ -225,7 +254,8 @@ def main() -> None:
         "products_tested": len(rows),
         "products_passed": len(good_rows),
         "products_failed": failed,
-        "ragas": ragas_scores,
+        "retrieval_limit": 12,
+        "faithfulness": ragas_scores,
         "rows": [
             {k: v for k, v in r.items() if not k.startswith("_")}
             for r in rows

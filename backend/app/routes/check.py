@@ -18,7 +18,7 @@ async def check_compliance(body: CheckRequest) -> ComplianceResult:
             detail="قاعدة المعرفة التنظيمية غير جاهزة. شغّل سكريبت الاستيعاب أولاً.",
         )
 
-    chunks = search(body.product_description, limit=16)
+    chunks = search(body.product_description, limit=12, corpora=body.corpora)
     if not chunks:
         raise HTTPException(status_code=503, detail="لم يتم العثور على مواد تنظيمية مرتبطة")
 

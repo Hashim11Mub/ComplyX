@@ -5,6 +5,7 @@ import fitz  # PyMuPDF — already in requirements
 router = APIRouter()
 
 MAX_CHARS = 8_000
+MAX_BYTES = 20 * 1024 * 1024  # 20 MB — matches the limit promised in the UI
 SUPPORTED = {"pdf", "docx", "doc", "txt"}
 
 
@@ -20,6 +21,11 @@ async def extract_text(file: UploadFile = File(...)):
         )
 
     content = await file.read()
+    if len(content) > MAX_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail="File is too large. Maximum size is 20 MB.",
+        )
     text = ""
 
     if ext == "txt":
