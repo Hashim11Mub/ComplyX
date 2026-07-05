@@ -154,6 +154,76 @@ const CORPUS_DEFS: Array<{ id: Corpus; en: string; ar: string }> = [
 ];
 const ALL_CORPORA: Corpus[] = ["sama", "pdpl", "shariah", "cma"];
 
+// The 7 dimensions the compliance model checks before deciding whether to ask
+// clarifying questions (kept in sync with CLARIFY_SYSTEM in backend/app/llm.py).
+// Surfacing them live in the input step teaches users what "good" looks like
+// before they ever submit, instead of only reacting after the fact.
+type CoverageDim = { id: string; en: string; ar: string; hintEn: string; hintAr: string; keywords: string[] };
+
+const COVERAGE_DIMS: CoverageDim[] = [
+  {
+    id: "license",
+    en: "License status",
+    ar: "حالة الترخيص",
+    hintEn: "Is the product already SAMA/SOCPA licensed, applying, or pre-application?",
+    hintAr: "هل المنتج مرخّص من ساما أو الهيئة، أم قيد التقديم، أم في مرحلة ما قبل التقديم؟",
+    keywords: ["licen", "permit", "sama", "socpa", "authoriz", "regulatory approval", "رخص", "ترخيص", "تصريح", "ساما", "موافقة تنظيمية"]
+  },
+  {
+    id: "users",
+    en: "Target users",
+    ar: "المستخدمون المستهدفون",
+    hintEn: "Who will use it — Saudi nationals, residents, SMEs, retail consumers?",
+    hintAr: "من سيستخدمه؟ مواطنون سعوديون، مقيمون، منشآت صغيرة ومتوسطة، عملاء أفراد؟",
+    keywords: ["saudi national", "resident", "sme", "small and medium", "retail consumer", "retail customer", "corporate client", "expatriate", "target user", "target market", "customer segment", "مواطن سعودي", "مقيم", "مؤسسات صغيرة", "عملاء أفراد", "شركات", "مستهدف", "شريحة العملاء"]
+  },
+  {
+    id: "limits",
+    en: "Transaction limits",
+    ar: "حدود المعاملات",
+    hintEn: "Daily/monthly volumes and per-transaction caps",
+    hintAr: "الحدود اليومية أو الشهرية وحد كل معاملة",
+    keywords: ["limit", "cap", "threshold", "per transaction", "per-transaction", "daily limit", "monthly limit", "maximum amount", "sar ", "حد", "سقف", "الحد الأقصى", "يومي", "شهري", "لكل معاملة", "ريال"]
+  },
+  {
+    id: "data",
+    en: "Data handling",
+    ar: "التعامل مع البيانات",
+    hintEn: "What personal or financial data is collected, stored, or processed",
+    hintAr: "ما البيانات الشخصية أو المالية التي تُجمع أو تُخزَّن أو تُعالَج",
+    keywords: ["personal data", "data storage", "data collection", "encrypt", "store data", "process data", "pii", "privacy", "data protection", "data retention", "بيانات شخصية", "تخزين البيانات", "جمع البيانات", "تشفير", "خصوصية", "حماية البيانات"]
+  },
+  {
+    id: "integrations",
+    en: "Integrations",
+    ar: "التكاملات",
+    hintEn: "Third-party integrations — banks, SADAD, SARIE, international networks",
+    hintAr: "التكاملات مع أطراف ثالثة — البنوك، سداد، سريع، الشبكات الدولية",
+    keywords: ["sadad", "sarie", "mada", "bank integration", "api integration", "third-party", "third party", "payment gateway", "network integration", "open banking", "سداد", "سريع", "مدى", "تكامل مع البنوك", "واجهة برمجية", "طرف ثالث", "بوابة الدفع"]
+  },
+  {
+    id: "auth",
+    en: "Authentication",
+    ar: "المصادقة",
+    hintEn: "Authentication method — OTP, biometric, multi-factor, password",
+    hintAr: "طريقة المصادقة — رمز تحقق، بصمة، مصادقة ثنائية، كلمة مرور",
+    keywords: ["otp", "biometric", "fingerprint", "face id", "face recognition", "multi-factor", "mfa", "two-factor", "authentication method", "pin code", "رمز التحقق", "بصمة", "التعرف على الوجه", "مصادقة ثنائية", "كلمة مرور", "رمز سري"]
+  },
+  {
+    id: "credit",
+    en: "Credit / lending",
+    ar: "ائتمان أو تمويل",
+    hintEn: "Any credit extension, BNPL, or interest-bearing component",
+    hintAr: "أي عنصر ائتماني أو تقسيط (BNPL) أو فائدة",
+    keywords: ["credit", "loan", "lending", "bnpl", "buy now pay later", "interest rate", "installment", "instalment", "financing", "credit line", "ائتمان", "قرض", "تمويل", "تقسيط", "فائدة", "الدفع الآجل"]
+  }
+];
+
+function computeCoverage(description: string): boolean[] {
+  const lowered = description.toLowerCase();
+  return COVERAGE_DIMS.map((dim) => dim.keywords.some((keyword) => lowered.includes(keyword)));
+}
+
 const DISCLAIMER_AR = "هذا تقرير تحليلي مبني على وثائق تنظيمية متاحة للعموم ولا يُعدّ رأياً قانونياً نهائياً.";
 const DISCLAIMER_EN = "This is an analytical report based on publicly available regulatory documents and does not constitute final legal advice.";
 
@@ -792,6 +862,9 @@ export default function ComplianceChecker() {
     return { finding, retrieved, scanFilled, isNext: slotIndex === nextSlot, dot, halo };
   });
 
+  const coverageFlags = computeCoverage(effectiveDesc());
+  const coverageCovered = coverageFlags.filter(Boolean).length;
+
   return (
     <div className="cx-root">
       <header className="cx-topbar" dir="ltr">
@@ -1039,6 +1112,34 @@ export default function ComplianceChecker() {
                     )}
                   </div>
                 )}
+
+                <div className="cx-coverage">
+                  <div className="cx-coverage-head">
+                    <span className="cx-section-label">{t("What makes a strong description", "ما الذي يجعل الوصف قوياً")}</span>
+                    <strong>{coverageCovered} / {COVERAGE_DIMS.length}</strong>
+                  </div>
+                  <p className="cx-coverage-caption">
+                    {t(
+                      "Mention these and the scan needs fewer follow-up questions.",
+                      "اذكر هذه التفاصيل ليحتاج الفحص أسئلة توضيحية أقل."
+                    )}
+                  </p>
+                  <div className="cx-coverage-chips">
+                    {COVERAGE_DIMS.map((dim, index) => {
+                      const covered = coverageFlags[index];
+                      return (
+                        <div
+                          className={`cx-coverage-chip${covered ? " is-covered" : ""}`}
+                          key={dim.id}
+                          title={isAr ? dim.hintAr : dim.hintEn}
+                        >
+                          {covered ? <CheckSmall /> : null}
+                          {isAr ? dim.ar : dim.en}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
 
                 <button className={`cx-cta${canScan ? " is-enabled" : ""}`} disabled={!canScan} onClick={startScan} type="button">
                   <SearchMini />
