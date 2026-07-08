@@ -6,12 +6,15 @@ from ..scoring import score_findings
 router = APIRouter()
 
 
+# Sync def on purpose: blocking LLM call; threadpool keeps /health responsive.
 @router.post("/retone", response_model=ComplianceResult)
-async def retone(body: RetoneRequest) -> ComplianceResult:
+def retone(body: RetoneRequest) -> ComplianceResult:
     if not body.findings:
         raise HTTPException(status_code=400, detail="No findings to retone")
 
-    findings, executive_summary = retone_findings(body.findings, body.tone, body.lang)
+    findings, executive_summary = retone_findings(
+        body.findings, body.tone, body.lang, original_summary=body.executive_summary
+    )
     score, risk_level, gaps = score_findings(findings)
     lang_key = body.lang if body.lang in ("ar", "en") else "ar"
     return ComplianceResult(

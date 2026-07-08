@@ -3,6 +3,7 @@
 import { ChangeEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
 import { askConsultant, checkCompliance, downloadPdfReport, fetchHealth, getProductQuestions, retoneReport, streamCheck } from "@/lib/api";
 import type {
+  ChatSessionContext,
   ComplianceResult,
   ClarifyQuestion,
   Corpus,
@@ -224,6 +225,98 @@ function computeCoverage(description: string): boolean[] {
   return COVERAGE_DIMS.map((dim) => dim.keywords.some((keyword) => lowered.includes(keyword)));
 }
 
+// Fallback interview questions, one per coverage dimension. Used when the
+// backend clarify call returns no questions (model judgment, error, or
+// backend unreachable) but the coverage checklist above the CTA shows gaps.
+// Without this the UI tells the user "these details are missing" and then
+// silently skips step 1.5, which reads as a broken promise.
+const FALLBACK_CLARIFY: ClarifyQuestion[] = [
+  {
+    id: "license",
+    text_en: "What is the product's licensing status?",
+    text_ar: "ما حالة ترخيص المنتج؟",
+    allow_multiple: false,
+    options: [
+      { value: "licensed", label_en: "Already licensed (SAMA/CMA)", label_ar: "مرخّص بالفعل (ساما أو هيئة السوق)" },
+      { value: "applying", label_en: "Application submitted", label_ar: "الطلب مقدَّم وقيد الدراسة" },
+      { value: "pre_application", label_en: "Pre-application stage", label_ar: "مرحلة ما قبل التقديم" },
+      { value: "unsure", label_en: "Not sure yet", label_ar: "غير متأكد بعد" }
+    ]
+  },
+  {
+    id: "users",
+    text_en: "Who are the target users?",
+    text_ar: "من هم المستخدمون المستهدفون؟",
+    allow_multiple: true,
+    options: [
+      { value: "saudi_nationals", label_en: "Saudi nationals", label_ar: "مواطنون سعوديون" },
+      { value: "residents", label_en: "Residents and expatriates", label_ar: "مقيمون ووافدون" },
+      { value: "retail", label_en: "Retail consumers", label_ar: "عملاء أفراد" },
+      { value: "sme_corporate", label_en: "SMEs and corporates", label_ar: "منشآت صغيرة ومتوسطة وشركات" }
+    ]
+  },
+  {
+    id: "limits",
+    text_en: "What transaction limits will apply?",
+    text_ar: "ما حدود المعاملات المطبقة؟",
+    allow_multiple: false,
+    options: [
+      { value: "under_5k", label_en: "Under SAR 5,000 daily", label_ar: "أقل من 5,000 ريال يومياً" },
+      { value: "5k_20k", label_en: "SAR 5,000 to 20,000 daily", label_ar: "من 5,000 إلى 20,000 ريال يومياً" },
+      { value: "above_20k", label_en: "Above SAR 20,000 daily", label_ar: "أكثر من 20,000 ريال يومياً" },
+      { value: "undefined", label_en: "Not defined yet", label_ar: "لم تُحدَّد بعد" }
+    ]
+  },
+  {
+    id: "data",
+    text_en: "What personal data does the product handle?",
+    text_ar: "ما البيانات الشخصية التي يتعامل معها المنتج؟",
+    allow_multiple: true,
+    options: [
+      { value: "identity", label_en: "Identity data (national ID, Iqama)", label_ar: "بيانات الهوية (الهوية الوطنية أو الإقامة)" },
+      { value: "financial", label_en: "Financial and transaction data", label_ar: "بيانات مالية ومعاملات" },
+      { value: "biometric", label_en: "Biometric data", label_ar: "بيانات حيوية (بصمة أو وجه)" },
+      { value: "minimal", label_en: "Minimal or none", label_ar: "الحد الأدنى أو لا شيء" }
+    ]
+  },
+  {
+    id: "integrations",
+    text_en: "Which third-party systems does it integrate with?",
+    text_ar: "ما الأنظمة الخارجية التي يتكامل معها المنتج؟",
+    allow_multiple: true,
+    options: [
+      { value: "local_banks", label_en: "Local banks / mada", label_ar: "البنوك المحلية / مدى" },
+      { value: "sadad_sarie", label_en: "SADAD / SARIE", label_ar: "سداد / سريع" },
+      { value: "international", label_en: "International networks", label_ar: "شبكات دولية" },
+      { value: "none", label_en: "No external integrations", label_ar: "لا توجد تكاملات خارجية" }
+    ]
+  },
+  {
+    id: "auth",
+    text_en: "How do users authenticate?",
+    text_ar: "كيف يوثّق المستخدمون هويتهم؟",
+    allow_multiple: true,
+    options: [
+      { value: "otp", label_en: "OTP (one-time password)", label_ar: "رمز تحقق لمرة واحدة (OTP)" },
+      { value: "biometric", label_en: "Biometric (fingerprint / face)", label_ar: "بصمة أو تعرف على الوجه" },
+      { value: "mfa", label_en: "Multi-factor authentication", label_ar: "مصادقة متعددة العوامل" },
+      { value: "password", label_en: "Password only", label_ar: "كلمة مرور فقط" }
+    ]
+  },
+  {
+    id: "credit",
+    text_en: "Does the product include any credit or deferred-payment element?",
+    text_ar: "هل يتضمن المنتج أي عنصر ائتماني أو دفع آجل؟",
+    allow_multiple: false,
+    options: [
+      { value: "none", label_en: "No credit element", label_ar: "لا يوجد عنصر ائتماني" },
+      { value: "bnpl", label_en: "BNPL / installments", label_ar: "دفع آجل / تقسيط" },
+      { value: "credit_line", label_en: "Credit line or loans", label_ar: "حد ائتماني أو قروض" },
+      { value: "interest", label_en: "Interest-bearing component", label_ar: "عنصر بفائدة" }
+    ]
+  }
+];
+
 const DISCLAIMER_AR = "هذا تقرير تحليلي مبني على وثائق تنظيمية متاحة للعموم ولا يُعدّ رأياً قانونياً نهائياً.";
 const DISCLAIMER_EN = "This is an analytical report based on publicly available regulatory documents and does not constitute final legal advice.";
 
@@ -277,6 +370,7 @@ export default function ComplianceChecker() {
   const [selectedCorpora, setSelectedCorpora] = useState<Corpus[]>(ALL_CORPORA);
   const [liveFindings, setLiveFindings] = useState<Finding[]>([]);
   const [retrievedArticles, setRetrievedArticles] = useState<RetrievedArticle[]>([]);
+  const [retrievedTitlesAr, setRetrievedTitlesAr] = useState<string[]>([]);
   const [health, setHealth] = useState<HealthInfo | null>(null);
   const [clarifiedCount, setClarifiedCount] = useState(0);
   const [scanDate, setScanDate] = useState("");
@@ -290,9 +384,50 @@ export default function ComplianceChecker() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recognitionRef = useRef<any>(null);
 
+  // Report variants (lang x complexity). The base scan result seeds the cache;
+  // every retone derives from the SAME base findings, so a variant is generated
+  // exactly once and switching back always shows the identical text. The other
+  // language is prefetched in the background right after the scan completes.
+  const resultCacheRef = useRef<Record<string, ComplianceResult>>({});
+  const inflightRef = useRef<Record<string, Promise<ComplianceResult>>>({});
+  const baseResultRef = useRef<ComplianceResult | null>(null);
+
   const isAr = lang === "ar";
   const dirAttr = isAr ? "rtl" : "ltr";
   const t = (en: string, ar: string) => (isAr ? ar : en);
+
+  // Arabic sessions: localize the article designator ("Article 4.2" -> "المادة 4.2").
+  // Regulation names stay as published (proper document titles).
+  const articleLabel = (article: string) =>
+    isAr
+      ? article
+          .replace(/^Article\s*/i, "المادة ")
+          .replace(/^Section\s*/i, "القسم ")
+          .replace(/^Rule\s*/i, "القاعدة ")
+          .replace(/^Chapter\s*/i, "الفصل ")
+      : article;
+
+  // Verbatim chunks are windowed slices of long articles, so they can start or
+  // end mid-sentence. Trim to sentence boundaries for display only; the stored
+  // requirement.text stays byte-exact for quote-faithfulness.
+  function cleanExcerpt(text: string): string {
+    let out = text.replace(/\s+/g, " ").trim();
+    if (/^[a-z,;:)\]»؛،]/.test(out)) {
+      const firstStop = out.search(/[.!?؟][\s]/);
+      if (firstStop > -1 && firstStop < out.length * 0.4) {
+        out = "… " + out.slice(firstStop + 1).trim();
+      }
+    }
+    if (!/[.!?؟؛]$/.test(out)) {
+      const lastStop = Math.max(out.lastIndexOf(". "), out.lastIndexOf("؟ "), out.lastIndexOf("! "));
+      if (lastStop > out.length * 0.6) {
+        out = out.slice(0, lastStop + 1);
+      } else {
+        out = out + " …";
+      }
+    }
+    return out;
+  }
   const hasStarted = appState === "scanning" || appState === "results";
   const isResults = appState === "results";
   const canScan = hasContent();
@@ -530,10 +665,20 @@ export default function ComplianceChecker() {
     const { questions } = await getProductQuestions(effectiveDesc(), productType, lang);
     setClarifyLoading(false);
 
-    if (questions.length === 0) {
+    let effectiveQuestions = questions;
+    if (effectiveQuestions.length === 0) {
+      // The coverage checklist promised follow-ups for uncovered dimensions;
+      // keep that promise with local fallback questions when the backend
+      // returns none (model judgment, error, or unreachable).
+      const flags = computeCoverage(effectiveDesc());
+      const missing = new Set(COVERAGE_DIMS.filter((_, index) => !flags[index]).map((dim) => dim.id));
+      effectiveQuestions = FALLBACK_CLARIFY.filter((question) => missing.has(question.id)).slice(0, 4);
+    }
+
+    if (effectiveQuestions.length === 0) {
       runActualScan(effectiveDesc());
     } else {
-      setClarifyQuestions(questions);
+      setClarifyQuestions(effectiveQuestions);
     }
   }
 
@@ -547,6 +692,10 @@ export default function ComplianceChecker() {
     setWaitMsgIdx(0);
     setLiveFindings([]);
     setRetrievedArticles([]);
+    setRetrievedTitlesAr([]);
+    resultCacheRef.current = {};
+    inflightRef.current = {};
+    baseResultRef.current = null;
     const scrollTimer = setTimeout(() => scrollToId("scan"), 80);
     timers.current.push(scrollTimer);
 
@@ -564,7 +713,10 @@ export default function ComplianceChecker() {
     // Streaming first (real retrieval + findings fill the slots as Claude
     // writes them); the plain POST /api/check path is the fallback.
     streamCheck(desc, productType, complexity, lang, selectedCorpora, {
-      onRetrieved: (articles) => setRetrievedArticles(articles.slice(0, 8)),
+      // Keep the FULL list (typically 12): slots show the top 8, and the
+      // honest count line below them tells the user how many are in analysis.
+      onRetrieved: (articles) => setRetrievedArticles(articles),
+      onRetrievedAr: (titles) => setRetrievedTitlesAr(titles),
       onFinding: (finding) => setLiveFindings((current) => [...current, finding])
     })
       .then((result) => {
@@ -641,11 +793,57 @@ export default function ComplianceChecker() {
     });
   }
 
+  function variantKey(variantLang: Lang, variantComplexity: Complexity) {
+    return `${variantLang}-${variantComplexity}`;
+  }
+
+  /** Get a report variant: cache hit resolves immediately, an in-flight
+   * request is awaited (never duplicated), otherwise one retone call runs.
+   * All variants derive from the base scan result, so each is generated once
+   * and its wording never changes on repeated switches. */
+  function fetchVariant(variantLang: Lang, variantComplexity: Complexity): Promise<ComplianceResult> {
+    const key = variantKey(variantLang, variantComplexity);
+    const cached = resultCacheRef.current[key];
+    if (cached) return Promise.resolve(cached);
+    const inflight = inflightRef.current[key];
+    if (inflight) return inflight;
+
+    const base = baseResultRef.current;
+    if (!base) return Promise.reject(new Error("no base result"));
+    const productType: BackendProductType = selectedProduct ? (PRODUCT_TYPE_MAP[selectedProduct] ?? "general") : "general";
+
+    const request = retoneReport(base.findings, productType, variantComplexity, variantLang, base.executive_summary)
+      .then((result) => {
+        if (!result.executive_summary) {
+          result = { ...result, executive_summary: base.executive_summary };
+        }
+        resultCacheRef.current[key] = result;
+        delete inflightRef.current[key];
+        return result;
+      })
+      .catch((error) => {
+        delete inflightRef.current[key];
+        throw error;
+      });
+    inflightRef.current[key] = request;
+    return request;
+  }
+
   function finishScan(result: ComplianceResult) {
     clearTimers();
     const ref = `CX-2026-${Math.floor(10000 + Math.random() * 89999)}`;
     // Fill slots with real finding data immediately so user can read them
     setComplianceResult(result);
+    // Seed the variant cache and prefetch the other language in the background
+    // (then the other two detail levels) so switching later is instant.
+    baseResultRef.current = result;
+    resultCacheRef.current[variantKey(lang, complexity)] = result;
+    const otherLang: Lang = lang === "ar" ? "en" : "ar";
+    const otherComplexities = (["simple", "executive", "technical"] as Complexity[]).filter((c) => c !== complexity);
+    fetchVariant(otherLang, complexity)
+      .then(() => fetchVariant(lang, otherComplexities[0]))
+      .then(() => fetchVariant(lang, otherComplexities[1]))
+      .catch(() => { /* prefetch is best-effort; on-demand fetch covers misses */ });
     setRevealedCount(6);
     setScanDate(new Date().toLocaleDateString(isAr ? "ar-SA" : "en-GB", { day: "numeric", month: "short", year: "numeric" }));
     fetchHealth().then(setHealth);
@@ -698,7 +896,11 @@ export default function ComplianceChecker() {
     setSubmittedDesc("");
     setLiveFindings([]);
     setRetrievedArticles([]);
+    setRetrievedTitlesAr([]);
     setClarifiedCount(0);
+    resultCacheRef.current = {};
+    inflightRef.current = {};
+    baseResultRef.current = null;
     recognitionRef.current?.stop();
     setRecording(false);
     setVoiceError(null);
@@ -706,19 +908,26 @@ export default function ComplianceChecker() {
     timers.current.push(timer);
   }
 
+  function applyVariant(result: ComplianceResult) {
+    setComplianceResult(result);
+    const target = CIRCUMFERENCE * (1 - result.compliance_score / 100);
+    setDialOffset(target);
+    setDialDisplay(result.compliance_score);
+  }
+
   async function handleComplexityChange(newComplexity: Complexity) {
     setComplexity(newComplexity);
     if (!complianceResult) return;
-    const productType: BackendProductType = selectedProduct ? (PRODUCT_TYPE_MAP[selectedProduct] ?? "general") : "general";
+    const cached = resultCacheRef.current[variantKey(lang, newComplexity)];
+    if (cached) {
+      applyVariant(cached);
+      return;
+    }
+    // Not prefetched yet: show the usual loading state until the variant
+    // (in-flight background request or a fresh retone) resolves.
     setIsRefetching(true);
     try {
-      // Re-render existing findings in the new tone — never re-classifies,
-      // so compliance_score is guaranteed identical to the original scan.
-      const result = await retoneReport(complianceResult.findings, productType, newComplexity, lang);
-      setComplianceResult(result);
-      const target = CIRCUMFERENCE * (1 - result.compliance_score / 100);
-      setDialOffset(target);
-      setDialDisplay(result.compliance_score);
+      applyVariant(await fetchVariant(lang, newComplexity));
     } catch {
       // keep existing result on error
     } finally {
@@ -729,21 +938,52 @@ export default function ComplianceChecker() {
   async function handleLangChange(newLang: Lang) {
     setLang(newLang);
     if (!complianceResult || isRefetching) return;
-    const productType: BackendProductType = selectedProduct ? (PRODUCT_TYPE_MAP[selectedProduct] ?? "general") : "general";
+    const cached = resultCacheRef.current[variantKey(newLang, complexity)];
+    if (cached) {
+      applyVariant(cached);
+      return;
+    }
     setIsRefetching(true);
     try {
-      // Re-render existing findings in the new language — never re-classifies,
-      // so compliance_score is guaranteed identical to the original scan.
-      const result = await retoneReport(complianceResult.findings, productType, complexity, newLang);
-      setComplianceResult(result);
-      const target = CIRCUMFERENCE * (1 - result.compliance_score / 100);
-      setDialOffset(target);
-      setDialDisplay(result.compliance_score);
+      applyVariant(await fetchVariant(newLang, complexity));
     } catch {
       // keep existing result on error
     } finally {
       setIsRefetching(false);
     }
+  }
+
+  /** What the assistant should know about this session: the description
+   * (typed, uploaded, or spoken), interview answers, and the report so far. */
+  function buildChatContext(): ChatSessionContext {
+    const answeredLines = clarifyQuestions
+      .filter((question) => (clarifyAnswers[question.id] ?? []).length > 0)
+      .map((question) => {
+        const values = clarifyAnswers[question.id] ?? [];
+        const labels = question.options
+          .filter((option) => values.includes(option.value))
+          .map((option) => (isAr ? option.label_ar : option.label_en));
+        return `${isAr ? question.text_ar : question.text_en}: ${labels.join(", ")}`;
+      });
+    return {
+      product_type: productName,
+      product_description: (submittedDesc || effectiveDesc()).slice(0, 600),
+      uploaded_file_name: uploadedFile?.name ?? "",
+      clarified_answers: answeredLines,
+      compliance_score: complianceResult?.compliance_score ?? null,
+      risk_level: complianceResult?.risk_level ?? "",
+      gaps_count: complianceResult?.gaps_count ?? null,
+      findings: (complianceResult?.findings ?? []).map((finding) => ({
+        title: finding.requirement.title,
+        status: finding.status,
+        risk: finding.risk,
+        article: finding.requirement.article,
+        source: finding.requirement.source,
+        regulator: finding.requirement.regulator
+      })),
+      executive_summary: complianceResult?.executive_summary ?? "",
+      lang
+    };
   }
 
   async function sendChat() {
@@ -758,7 +998,7 @@ export default function ComplianceChecker() {
     setChatInputValue("");
     setChatTyping(true);
     try {
-      const response = await askConsultant(text, history);
+      const response = await askConsultant(text, history, buildChatContext());
       setChatMessages((current) => [...current, { id: Date.now() + 1, fromUser: false, text: response.answer }]);
     } catch {
       setChatMessages((current) => [...current, { id: Date.now() + 1, fromUser: false, text: isAr ? CHAT_ERROR_AR : CHAT_ERROR_EN }]);
@@ -863,6 +1103,7 @@ export default function ComplianceChecker() {
   const sectionSlots = Array.from({ length: slotCount }, (_, slotIndex) => {
     const finding = complianceResult?.findings[slotIndex] ?? liveFindings[slotIndex] ?? null;
     const retrieved = !finding ? retrievedArticles[slotIndex] ?? null : null;
+    const retrievedTitleAr = retrieved && isAr ? retrievedTitlesAr[slotIndex] ?? null : null;
     const scanFilled = !complianceResult && !finding && !retrieved && slotIndex < rc;
     const dot = finding
       ? finding.status === "gap" ? "#ff9a8f" : finding.status === "needs_review" ? "#f3d08a" : "#8fe8df"
@@ -870,7 +1111,7 @@ export default function ComplianceChecker() {
     const halo = finding
       ? finding.status === "gap" ? "rgba(255,154,143,0.2)" : finding.status === "needs_review" ? "rgba(243,208,138,0.2)" : "rgba(143,232,223,0.2)"
       : "rgba(143,232,223,0.2)";
-    return { finding, retrieved, scanFilled, isNext: slotIndex === nextSlot, dot, halo };
+    return { finding, retrieved, retrievedTitleAr, scanFilled, isNext: slotIndex === nextSlot, dot, halo };
   });
 
   const coverageFlags = computeCoverage(effectiveDesc());
@@ -1320,7 +1561,7 @@ export default function ComplianceChecker() {
                               <div>
                                 <span>
                                   {slot.finding.requirement.regulator ? `${slot.finding.requirement.regulator} · ` : ""}
-                                  {slot.finding.requirement.article}
+                                  {articleLabel(slot.finding.requirement.article)}
                                 </span>
                                 <i style={{ background: slot.dot, boxShadow: `0 0 0 4px ${slot.halo}` }} />
                               </div>
@@ -1331,11 +1572,11 @@ export default function ComplianceChecker() {
                               <div>
                                 <span>
                                   {slot.retrieved.regulator ? `${slot.retrieved.regulator} · ` : ""}
-                                  {slot.retrieved.article}
+                                  {articleLabel(slot.retrieved.article)}
                                 </span>
                                 <i className="cx-slot-scan-dot" />
                               </div>
-                              <strong dir="auto">{slot.retrieved.title || slot.retrieved.source}</strong>
+                              <strong dir="auto">{slot.retrievedTitleAr || slot.retrieved.title || slot.retrieved.source}</strong>
                             </div>
                           ) : slot.scanFilled ? (
                             <div className="cx-slot-content">
@@ -1354,6 +1595,14 @@ export default function ComplianceChecker() {
                         </div>
                       ))}
                     </div>
+                    {retrievedArticles.length > 8 && (
+                      <div className="cx-more-articles">
+                        {t(
+                          `${retrievedArticles.length} relevant articles in analysis. Showing the ${Math.min(slotCount, 8)} most decision-critical.`,
+                          `${retrievedArticles.length} مادة ذات صلة قيد التحليل، تُعرض أبرز ${Math.min(slotCount, 8)} مواد.`
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1480,11 +1729,24 @@ export default function ComplianceChecker() {
                       const statusLabel = finding.status === "gap" ? t("Gap", "فجوة") : finding.status === "needs_review" ? t("Needs Review", "بحاجة لمراجعة") : t("Compliant", "متوافق");
                       const findingNum = `F-${String(idx + 1).padStart(2, "0")}`;
                       return (
-                        <article className={`cx-finding-row${compliant ? " is-compliant" : ""}`} key={findingKey}>
-                          <button className="cx-finding-header" onClick={() => setExpandedFindingId(expanded ? null : findingKey)} style={{ borderInlineStartColor: barColor }} type="button">
+                        <article className={`cx-finding-row${compliant ? " is-compliant" : ""}`} id={`finding-${idx}`} key={findingKey}>
+                          <button
+                            className="cx-finding-header"
+                            onClick={() => {
+                              setExpandedFindingId(expanded ? null : findingKey);
+                              if (!expanded) {
+                                // Pan to the item once the body has expanded so the
+                                // details are on screen instead of below the fold.
+                                const panTimer = setTimeout(() => scrollToId(`finding-${idx}`), 380);
+                                timers.current.push(panTimer);
+                              }
+                            }}
+                            style={{ borderInlineStartColor: barColor }}
+                            type="button"
+                          >
                             <span className="cx-finding-num">{findingNum}</span>
                             <span style={{ background: badgeBg, color: barColor }}>{statusLabel}</span>
-                            <em>{finding.requirement.article}</em>
+                            <em>{articleLabel(finding.requirement.article)}</em>
                             {finding.requirement.regulator && <span className="cx-reg-tag">{finding.requirement.regulator}</span>}
                             <strong dir="auto">{finding.requirement.title}</strong>
                             <ChevronMini expanded={expanded} />
@@ -1499,12 +1761,19 @@ export default function ComplianceChecker() {
                                 <div className="cx-reg-source-pill">
                                   <span>{finding.requirement.source}</span>
                                   <span className="cx-reg-dot" />
-                                  <span>{finding.requirement.article}</span>
+                                  <span>{articleLabel(finding.requirement.article)}</span>
                                 </div>
                                 {finding.requirement.text && (
-                                  <div className="cx-reg-verbatim" dir="auto">
-                                    {finding.requirement.text}
-                                  </div>
+                                  <>
+                                    <div className="cx-reg-verbatim" dir="auto">
+                                      {cleanExcerpt(finding.requirement.text)}
+                                    </div>
+                                    {isAr && (
+                                      <div className="cx-verbatim-note">
+                                        النص الحرفي معروض بالإنجليزية كما نُشر في النظام الأصلي حفاظاً على دقة الاقتباس
+                                      </div>
+                                    )}
+                                  </>
                                 )}
                               </div>
                               {finding.user_answer_ref && (

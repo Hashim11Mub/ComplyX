@@ -2446,6 +2446,7 @@ html[dir="rtl"] .cx-chat-drawer {
 }
 
 .cx-clarify-shell {
+  animation: revealUp 0.55s ease both;
   max-width: 860px;
   position: relative;
   width: 100%;
@@ -2542,10 +2543,10 @@ html[dir="rtl"] .cx-chat-drawer {
 }
 
 .cx-clarify-chip.is-active {
-  background: #e8f5f3;
+  background: linear-gradient(135deg, var(--teal-500), var(--teal-700));
   border-color: var(--teal-700);
-  box-shadow: 0 0 0 3px rgba(0, 107, 104, 0.12);
-  color: var(--teal-700);
+  box-shadow: 0 6px 14px rgba(0, 107, 104, 0.28);
+  color: #ffffff;
   font-weight: 700;
 }
 
@@ -3045,7 +3046,31 @@ html[dir="rtl"] .cx-chat-drawer {
 }
 
 .cx-clarify-card.is-recap .cx-clarify-chip.is-active {
-  box-shadow: none;
+  box-shadow: 0 4px 10px rgba(0, 107, 104, 0.2);
+}
+
+/* ── Honest article count under the analysis slots ─────────────────────── */
+
+.cx-more-articles {
+  color: #8fe8df;
+  font-size: 12px;
+  font-weight: 600;
+  margin-top: 12px;
+  opacity: 0.85;
+  text-align: center;
+}
+
+/* ── Verbatim excerpt language note (Arabic sessions) ──────────────────── */
+
+.cx-finding-body .cx-reg-basis .cx-verbatim-note {
+  border-top: 1px solid rgba(0, 107, 104, 0.1);
+  color: var(--muted);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0;
+  margin-bottom: 0;
+  padding: 6px 12px;
+  text-transform: none;
 }
 
 .cx-coverage-chip.is-covered {

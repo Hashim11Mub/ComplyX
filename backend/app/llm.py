@@ -151,7 +151,7 @@ Strict rules — no exceptions:
 - Return at most 8 findings. Pick the articles most material to this product; skip irrelevant ones.
 - status: compliant = the description explicitly addresses the requirement; gap = the requirement clearly applies and is not met; needs_review = applicability or coverage cannot be determined from the description.
 - risk reflects the severity of THIS requirement for THIS product.
-- Write executive_summary, title, keywords, analysis and recommendation in the response language and tone requested at the end of the user message.
+- Write executive_summary, title, keywords, analysis and recommendation in the response language and tone requested at the end of the user message. This applies to `title` especially: when the response language is Arabic, every finding title MUST be written in Arabic even though the source articles are in English. Never copy an English article heading as a title in an Arabic report.
 - The description may end with a section labelled [Additional details provided by user] (Arabic: [تفاصيل إضافية يقدمها المستخدم]) containing answers the user gave in a clarification interview. Treat those answers as facts about the product. When a finding's status or risk is materially based on one of those answers, copy that answer into the finding's user_answer_ref field so the report can attribute it to the user; leave user_answer_ref out otherwise.
 - Never use the em dash character (—) in any text you write; use a comma, colon or period instead.
 - Do not calculate an overall score. The system derives it from your findings."""
@@ -533,7 +533,7 @@ Strict rules — no exceptions:
 - Write title, keywords, analysis, recommendation and executive_summary in the response language and tone requested at the end of the user message."""
 
 
-def _build_retone_messages(findings: list[Finding], tone: str, lang: str) -> list[dict]:
+def _build_retone_messages(findings: list[Finding], tone: str, lang: str, original_summary: str = "") -> list[dict]:
     tone_key = tone if tone in _TONE_INSTRUCTION else "executive"
     lang_key = lang if lang in ("ar", "en") else "ar"
     lang_name = "English" if lang_key == "en" else "Arabic (اللغة العربية الفصحى)"
@@ -549,10 +549,12 @@ def _build_retone_messages(findings: list[Finding], tone: str, lang: str) -> lis
             f"Current recommendation: {f.recommendation}"
         )
     context_block = "Existing findings to rewrite:\n\n" + "\n\n---\n\n".join(parts)
+    if original_summary:
+        context_block += f"\n\n---\n\nCurrent executive summary (rewrite this, do not invent a new assessment):\n{original_summary}"
     instruction_block = (
         f"Response language: {lang_name}.\n"
         f"Tone: {_TONE_INSTRUCTION[tone_key][lang_key]}\n"
-        "Rewrite each finding's title, keywords, analysis and recommendation, and write a new executive summary, "
+        "Rewrite each finding's title, keywords, analysis and recommendation, and rewrite the executive summary, "
         "in the requested language and tone. Keep every finding consistent with its given (fixed) status and risk."
     )
     return [{
@@ -565,13 +567,13 @@ def _build_retone_messages(findings: list[Finding], tone: str, lang: str) -> lis
 
 
 @_traceable(name="retone_findings")
-def retone_findings(findings: list[Finding], tone: str = "executive", lang: str = "ar") -> tuple[list[Finding], str]:
+def retone_findings(findings: list[Finding], tone: str = "executive", lang: str = "ar", original_summary: str = "") -> tuple[list[Finding], str]:
     response = _client().messages.create(
         model=MODEL,
         max_tokens=4096,
         temperature=0,
         system=[{"type": "text", "text": RETONE_SYSTEM, "cache_control": {"type": "ephemeral"}}],
-        messages=_build_retone_messages(findings, tone, lang),
+        messages=_build_retone_messages(findings, tone, lang, original_summary),
         tools=[RETONE_TOOL],
         tool_choice={"type": "any"},
     )
@@ -602,7 +604,57 @@ def retone_findings(findings: list[Finding], tone: str = "executive", lang: str 
             recommendation=item.get("recommendation", original.recommendation),
             user_answer_ref=original.user_answer_ref,
         ))
-    return rewritten, tool_result.input.get("executive_summary", "")
+    # Fall back to the original summary rather than returning an empty one:
+    # a language switch must never make the executive summary disappear.
+    return rewritten, tool_result.input.get("executive_summary", "") or original_summary
+
+
+# ── Retrieved-title translation (analysis-step slots, Arabic UI) ────────────
+# The corpus is English, so retrieved article titles arrive in English. For an
+# Arabic session the stream emits the English titles instantly (first paint),
+# then a `retrieved_ar` event swaps in these translations when ready. Haiku
+# keeps this ~1-2s; any failure is silently skipped (English titles remain).
+
+_TRANSLATE_TITLES_TOOL = {
+    "name": "return_arabic_titles",
+    "description": "Return the Arabic translations of the given regulatory article titles",
+    "input_schema": {
+        "type": "object",
+        "required": ["titles"],
+        "properties": {
+            "titles": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Arabic translations, same count and order as the input titles",
+            }
+        },
+    },
+}
+
+
+def translate_titles_ar(titles: list[str]) -> list[str] | None:
+    """Translate article titles to Arabic. Returns None on any failure or
+    count mismatch so callers can keep the English originals."""
+    if not titles:
+        return None
+    try:
+        numbered = "\n".join(f"{i}. {t}" for i, t in enumerate(titles, 1))
+        response = _client().messages.create(
+            model=CLARIFY_MODEL,
+            max_tokens=1500,
+            temperature=0,
+            system="You translate Saudi financial-regulation article titles from English to Arabic. Translate faithfully and concisely; keep regulator names (SAMA, CMA) as-is. Never use the em dash character (—).",
+            messages=[{"role": "user", "content": f"Translate these article titles to Arabic:\n{numbered}"}],
+            tools=[_TRANSLATE_TITLES_TOOL],
+            tool_choice={"type": "any"},
+        )
+        tool_result = next((b for b in response.content if b.type == "tool_use"), None)
+        if tool_result is None:
+            return None
+        out = [str(t) for t in tool_result.input.get("titles", [])]
+        return out if len(out) == len(titles) else None
+    except Exception:
+        return None
 
 
 # ── Regulatory chat ──────────────────────────────────────────────────────────
@@ -611,8 +663,17 @@ def answer_regulatory_question(
     query: str,
     retrieved_chunks: list[dict],
     history: list[dict],
+    session_context: str = "",
 ) -> str:
     regulatory_context = _build_context(retrieved_chunks)
+
+    session_block = ""
+    if session_context:
+        session_block = f"""
+
+سياق جلسة المستخدم الحالية (استخدمه لفهم أسئلة مثل "لماذا هذه النتيجة؟" أو "منتجي هذا"؛ لا تكرره على المستخدم بلا داعٍ):
+{session_context}
+عند سؤال المستخدم عن نتيجة أو درجة من تقريره، اربط إجابتك بهذه النتائج مباشرة."""
 
     system_prompt = f"""أنت مستشار تنظيمي متخصص في أنظمة ساما والتشريعات المالية السعودية.
 أجب على الأسئلة التنظيمية بدقة، مستنداً إلى المواد التنظيمية المقدمة فقط.
@@ -626,7 +687,7 @@ def answer_regulatory_question(
 - إن لم تجد الإجابة في المواد المقدمة فقل ذلك صراحة ولا تخترع مادة
 
 السياق التنظيمي:
-{regulatory_context}"""
+{regulatory_context}{session_block}"""
 
     messages = [
         *[{"role": m["role"], "content": m["content"]} for m in history[:-1]],

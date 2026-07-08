@@ -16,7 +16,7 @@ from fastapi.responses import StreamingResponse
 
 from ..models import CheckRequest
 from ..retriever import search, count_indexed
-from ..llm import analyze_compliance_stream
+from ..llm import analyze_compliance_stream, translate_titles_ar
 
 router = APIRouter()
 
@@ -49,6 +49,15 @@ def check_compliance_stream(body: CheckRequest):
                 for c in chunks
             ],
         })
+        # Arabic UI: swap in translated titles as a follow-up event. English
+        # titles paint first (no latency cost); translation adds ~1-2s before
+        # the first finding, which itself takes ~15s. Failure keeps English.
+        if body.lang == "ar":
+            translated = translate_titles_ar([
+                c.get("article_title", "") or c.get("regulation_name", "") for c in chunks
+            ])
+            if translated:
+                yield _sse({"event": "retrieved_ar", "titles": translated})
         try:
             for kind, payload in analyze_compliance_stream(
                 product_description=body.product_description,

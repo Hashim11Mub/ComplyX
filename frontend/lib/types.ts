@@ -101,3 +101,28 @@ export type ClarifyQuestion = {
 export type ClarifyResponse = {
   questions: ClarifyQuestion[];
 };
+
+/** Mirrors backend ChatFindingBrief (models.py). */
+export type ChatFindingBrief = {
+  title: string;
+  status: string;
+  risk: string;
+  article: string;
+  source: string;
+  regulator?: string;
+};
+
+/** Mirrors backend ChatSessionContext (models.py) — what the assistant knows
+ * about the current session. Send whatever exists when the question is asked. */
+export type ChatSessionContext = {
+  product_type?: string;
+  product_description?: string;
+  uploaded_file_name?: string;
+  clarified_answers?: string[];
+  compliance_score?: number | null;
+  risk_level?: string;
+  gaps_count?: number | null;
+  findings?: ChatFindingBrief[];
+  executive_summary?: string;
+  lang?: "ar" | "en";
+};

@@ -1,4 +1,4 @@
-import { ComplianceResult, ClarifyResponse, Corpus, Finding, HealthInfo, ProductType, RetrievedArticle } from "./types";
+import { ChatSessionContext, ComplianceResult, ClarifyResponse, Corpus, Finding, HealthInfo, ProductType, RetrievedArticle } from "./types";
 
 export async function checkCompliance(
   product_description: string,
@@ -26,12 +26,13 @@ export async function retoneReport(
   findings: Finding[],
   product_type: ProductType,
   tone: "simple" | "executive" | "technical",
-  lang: "ar" | "en"
+  lang: "ar" | "en",
+  executive_summary = ""
 ) {
   const response = await fetch("/api/retone", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ product_type, tone, lang, findings })
+    body: JSON.stringify({ product_type, tone, lang, findings, executive_summary })
   });
   if (!response.ok) throw new Error("تعذر إعادة صياغة التقرير");
   return (await response.json()) as ComplianceResult;
@@ -39,6 +40,8 @@ export async function retoneReport(
 
 type StreamHandlers = {
   onRetrieved?: (articles: RetrievedArticle[]) => void;
+  /** Arabic sessions: translated titles for the retrieved articles, same order. */
+  onRetrievedAr?: (titles: string[]) => void;
   onFinding?: (finding: Finding) => void;
 };
 
@@ -71,6 +74,7 @@ export async function streamCheck(
     if (!line.startsWith("data:")) return;
     const payload = JSON.parse(line.slice(5).trim());
     if (payload.event === "retrieved") handlers.onRetrieved?.(payload.articles as RetrievedArticle[]);
+    else if (payload.event === "retrieved_ar") handlers.onRetrievedAr?.(payload.titles as string[]);
     else if (payload.event === "finding") handlers.onFinding?.(payload.finding as Finding);
     else if (payload.event === "complete") result = payload.result as ComplianceResult;
     else if (payload.event === "error") throw new Error(payload.detail ?? "stream error");
@@ -143,11 +147,15 @@ export async function getProductQuestions(
   }
 }
 
-export async function askConsultant(query: string, messages: { role: "user" | "assistant"; content: string }[]) {
+export async function askConsultant(
+  query: string,
+  messages: { role: "user" | "assistant"; content: string }[],
+  context?: ChatSessionContext
+) {
   const response = await fetch("/api/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ query, messages })
+    body: JSON.stringify({ query, messages, context })
   });
   if (!response.ok) throw new Error("تعذر إرسال الاستشارة");
   return response.json() as Promise<{ answer: string }>;

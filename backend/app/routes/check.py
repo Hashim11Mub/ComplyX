@@ -6,8 +6,11 @@ from ..llm import analyze_compliance
 router = APIRouter()
 
 
+# Sync def on purpose: retrieval + the LLM call block for up to a minute;
+# FastAPI runs sync endpoints in a threadpool so /health stays responsive
+# (async def here froze the event loop and made the UI report "Backend offline").
 @router.post("/check", response_model=ComplianceResult)
-async def check_compliance(body: CheckRequest) -> ComplianceResult:
+def check_compliance(body: CheckRequest) -> ComplianceResult:
     if len(body.product_description.strip()) < 20:
         raise HTTPException(status_code=400, detail="وصف المنتج قصير جداً")
 

@@ -57,6 +57,9 @@ class RetoneRequest(BaseModel):
     tone: str = "executive"
     lang: str = "ar"
     findings: list[Finding]
+    # Original executive summary: given to the LLM to rewrite (not invent) and
+    # used as a fallback if the rewrite omits one, so the summary never vanishes.
+    executive_summary: str = ""
 
 
 class ClarifyOption(BaseModel):
@@ -88,9 +91,35 @@ class ChatMessage(BaseModel):
     content: str
 
 
+class ChatFindingBrief(BaseModel):
+    """Compact finding used inside ChatSessionContext (keeps the chat prompt small)."""
+    title: str
+    status: str
+    risk: str
+    article: str
+    source: str
+    regulator: str = ""
+
+
+class ChatSessionContext(BaseModel):
+    """What the assistant knows about the current user session. All optional;
+    the frontend sends whatever exists at the moment the question is asked."""
+    product_type: str = ""
+    product_description: str = ""      # truncated client-side
+    uploaded_file_name: str = ""
+    clarified_answers: list[str] = []  # "Question: answer" lines from the interview
+    compliance_score: int | None = None
+    risk_level: str = ""
+    gaps_count: int | None = None
+    findings: list[ChatFindingBrief] = []
+    executive_summary: str = ""
+    lang: str = "ar"
+
+
 class ChatRequest(BaseModel):
     query: str
     messages: list[ChatMessage] = []
+    context: ChatSessionContext | None = None
 
 
 class ChatResponse(BaseModel):
