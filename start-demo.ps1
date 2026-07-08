@@ -43,7 +43,7 @@ foreach ($i in 1..45) {
 }
 if (-not $health) { Fail "Backend did not come up on port $BackendPort. Check the backend window for errors." }
 if (-not $health.ready) { Fail "Backend is up but Qdrant is EMPTY. Run: cd backend; python -m app.ingest --dir data/regulations" }
-Ok "Backend healthy — $($health.indexed_articles) articles indexed (corpus $($health.corpus_version))"
+Ok "Backend healthy - $($health.indexed_articles) articles indexed (corpus $($health.corpus_version))"
 
 Step "3/4 Frontend (Next.js, port $FrontendPort)"
 $envLocal = "$Root\frontend\.env.local"
