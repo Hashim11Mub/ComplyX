@@ -233,6 +233,10 @@ Read `types.ts` before changing any Pydantic model. A mismatch breaks the UI sil
 → 1–4 questions? → `AppState = "clarifying"` → user answers chips → `submitClarifications()` → `buildAugmentedDescription()` appends answers to description → `runActualScan(augmented)`  
 `submittedDesc` stores the augmented description so complexity/language re-fetches use identical input.
 
+## README Rule (user-set, 2026-07-08)
+
+At the END of a session, if the session changed anything user-facing (features, setup steps, ports, API surface, endpoints, corpus contents, measured quality numbers), update `README.md` (and `backend/README.md` if backend endpoints changed) to match, and include them in the git command list. Internal-only refactors do not require a README update. The no-em-dash copy rule applies to READMEs too.
+
 ## Git Rules (IMPORTANT)
 
 **Do not run git commands yourself.** At the end of your session, write down the git commands the user needs to run manually. Format:
