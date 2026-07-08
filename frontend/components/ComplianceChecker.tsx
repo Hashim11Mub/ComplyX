@@ -1,7 +1,7 @@
 "use client";
 
 import { ChangeEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
-import { askConsultant, checkCompliance, downloadPdfReport, fetchHealth, getProductQuestions, streamCheck } from "@/lib/api";
+import { askConsultant, checkCompliance, downloadPdfReport, fetchHealth, getProductQuestions, retoneReport, streamCheck } from "@/lib/api";
 import type {
   ComplianceResult,
   ClarifyQuestion,
@@ -13,7 +13,7 @@ import type {
 } from "@/lib/types";
 
 type Lang = "ar" | "en";
-type Mode = "describe" | "upload" | "voice";
+type Mode = "describe" | "voice";
 type AppState = "input" | "clarifying" | "scanning" | "results";
 type Complexity = "simple" | "executive" | "technical";
 type Product = {
@@ -173,7 +173,7 @@ const COVERAGE_DIMS: CoverageDim[] = [
     id: "users",
     en: "Target users",
     ar: "المستخدمون المستهدفون",
-    hintEn: "Who will use it — Saudi nationals, residents, SMEs, retail consumers?",
+    hintEn: "Who will use it? Saudi nationals, residents, SMEs, retail consumers",
     hintAr: "من سيستخدمه؟ مواطنون سعوديون، مقيمون، منشآت صغيرة ومتوسطة، عملاء أفراد؟",
     keywords: ["saudi national", "resident", "sme", "small and medium", "retail consumer", "retail customer", "corporate client", "expatriate", "target user", "target market", "customer segment", "مواطن سعودي", "مقيم", "مؤسسات صغيرة", "عملاء أفراد", "شركات", "مستهدف", "شريحة العملاء"]
   },
@@ -197,16 +197,16 @@ const COVERAGE_DIMS: CoverageDim[] = [
     id: "integrations",
     en: "Integrations",
     ar: "التكاملات",
-    hintEn: "Third-party integrations — banks, SADAD, SARIE, international networks",
-    hintAr: "التكاملات مع أطراف ثالثة — البنوك، سداد، سريع، الشبكات الدولية",
+    hintEn: "Third-party integrations: banks, SADAD, SARIE, international networks",
+    hintAr: "التكاملات مع أطراف ثالثة: البنوك، سداد، سريع، الشبكات الدولية",
     keywords: ["sadad", "sarie", "mada", "bank integration", "api integration", "third-party", "third party", "payment gateway", "network integration", "open banking", "سداد", "سريع", "مدى", "تكامل مع البنوك", "واجهة برمجية", "طرف ثالث", "بوابة الدفع"]
   },
   {
     id: "auth",
     en: "Authentication",
     ar: "المصادقة",
-    hintEn: "Authentication method — OTP, biometric, multi-factor, password",
-    hintAr: "طريقة المصادقة — رمز تحقق، بصمة، مصادقة ثنائية، كلمة مرور",
+    hintEn: "Authentication method: OTP, biometric, multi-factor, password",
+    hintAr: "طريقة المصادقة: رمز تحقق، بصمة، مصادقة ثنائية، كلمة مرور",
     keywords: ["otp", "biometric", "fingerprint", "face id", "face recognition", "multi-factor", "mfa", "two-factor", "authentication method", "pin code", "رمز التحقق", "بصمة", "التعرف على الوجه", "مصادقة ثنائية", "كلمة مرور", "رمز سري"]
   },
   {
@@ -298,10 +298,10 @@ export default function ComplianceChecker() {
   const canScan = hasContent();
   const productName = selectedProduct
     ? t(
-        PRODUCT_TYPES.find((product) => product.id === selectedProduct)?.en ?? "Unspecified product",
-        PRODUCT_TYPES.find((product) => product.id === selectedProduct)?.ar ?? "منتج غير محدد"
+        PRODUCT_TYPES.find((product) => product.id === selectedProduct)?.en ?? "General financial product",
+        PRODUCT_TYPES.find((product) => product.id === selectedProduct)?.ar ?? "منتج مالي عام"
       )
-    : t("Unspecified product", "منتج غير محدد");
+    : t("General financial product", "منتج مالي عام");
 
   useEffect(() => {
     document.documentElement.lang = lang;
@@ -366,16 +366,23 @@ export default function ComplianceChecker() {
   }
 
   function hasContent() {
-    if (mode === "describe") return inputText.trim().length > 0;
-    if (mode === "upload") return !uploadExtracting && uploadExtractedText.trim().length > 0;
+    if (mode === "describe") {
+      if (uploadExtracting) return false;
+      return inputText.trim().length > 0 || uploadExtractedText.trim().length > 0;
+    }
     if (mode === "voice") return transcript.trim().length > 0;
     return false;
   }
 
   function effectiveDesc() {
-    if (mode === "upload") return uploadExtractedText;
     if (mode === "voice") return transcript;
-    return inputText;
+    const text = inputText.trim();
+    const doc = uploadExtractedText.trim();
+    if (text && doc) {
+      const label = isAr ? "[محتوى المستند المرفق]" : "[Attached document content]";
+      return `${text}\n\n${label}\n${doc}`;
+    }
+    return doc || inputText;
   }
 
   function applyPreset(preset: Preset) {
@@ -513,6 +520,7 @@ export default function ComplianceChecker() {
     setComplianceResult(null);
     setClarifyQuestions([]);
     setClarifyAnswers({});
+    setClarifiedCount(0);
     setClarifyLoading(true);
     setAppState("clarifying");
     const scrollTimer = setTimeout(() => scrollToId("clarify"), 80);
@@ -704,7 +712,9 @@ export default function ComplianceChecker() {
     const productType: BackendProductType = selectedProduct ? (PRODUCT_TYPE_MAP[selectedProduct] ?? "general") : "general";
     setIsRefetching(true);
     try {
-      const result = await checkCompliance(submittedDesc || effectiveDesc(), productType, newComplexity, lang);
+      // Re-render existing findings in the new tone — never re-classifies,
+      // so compliance_score is guaranteed identical to the original scan.
+      const result = await retoneReport(complianceResult.findings, productType, newComplexity, lang);
       setComplianceResult(result);
       const target = CIRCUMFERENCE * (1 - result.compliance_score / 100);
       setDialOffset(target);
@@ -722,7 +732,9 @@ export default function ComplianceChecker() {
     const productType: BackendProductType = selectedProduct ? (PRODUCT_TYPE_MAP[selectedProduct] ?? "general") : "general";
     setIsRefetching(true);
     try {
-      const result = await checkCompliance(submittedDesc || effectiveDesc(), productType, complexity, newLang);
+      // Re-render existing findings in the new language — never re-classifies,
+      // so compliance_score is guaranteed identical to the original scan.
+      const result = await retoneReport(complianceResult.findings, productType, complexity, newLang);
       setComplianceResult(result);
       const target = CIRCUMFERENCE * (1 - result.compliance_score / 100);
       setDialOffset(target);
@@ -808,22 +820,21 @@ export default function ComplianceChecker() {
       icon: "match"
     },
     {
-      key: "score",
-      title: t("Score & risk in seconds", "درجة ومخاطر خلال ثوانٍ"),
-      body: t("A 0-100 compliance score and clear risk level.", "درجة امتثال من 0 إلى 100 مع مستوى مخاطر واضح."),
-      icon: "score"
+      key: "cite",
+      title: t("Verbatim article citations", "اقتباسات حرفية من المواد"),
+      body: t("Every finding quotes the exact regulation text it is based on. No paraphrasing, no invented articles.", "كل نتيجة تقتبس النص التنظيمي الحرفي الذي استندت إليه، دون إعادة صياغة أو مواد مختلقة."),
+      icon: "cite"
     },
     {
-      key: "lang",
-      title: t("Fully bilingual", "ثنائي اللغة بالكامل"),
-      body: t("Arabic & English, right down to the report.", "بالعربية والإنجليزية، حتى تفاصيل التقرير."),
-      icon: "lang"
+      key: "coverage",
+      title: t("Full regulatory coverage", "تغطية تنظيمية شاملة"),
+      body: t("SAMA, SDAIA data protection, AAOIFI Shariah and CMA standards. Over 9,000 indexed articles in one scan.", "ساما وحماية البيانات والمعايير الشرعية وهيئة السوق المالية. أكثر من 9,000 مادة مفهرسة في فحص واحد."),
+      icon: "coverage"
     }
   ];
 
   const modeDefs: Array<{ id: Mode; label: string }> = [
-    { id: "describe", label: t("Describe", "وصف نصي") },
-    { id: "upload", label: t("Upload document", "رفع مستند") },
+    { id: "describe", label: t("Describe or upload", "اكتب أو ارفع مستنداً") },
     { id: "voice", label: t("Voice", "تسجيل صوتي") }
   ];
 
@@ -905,15 +916,11 @@ export default function ComplianceChecker() {
                 <ShieldHero />
               </div>
               <div className="cx-hero-copy">
-                <div className="cx-eyebrow">
-                  <span />
-                  {t("REGULATORY COMPLIANCE AI", "ذكاء الامتثال التنظيمي")}
-                </div>
                 <h1 className="cx-hero-title">{t("Automated Financial Compliance. Continuous Audit Readiness.", "امتثال مالي آلي. استعداد دائم للتدقيق.")}</h1>
                 <p className="cx-hero-subtitle">
                   {t(
-                    "Describe, upload, or speak your product. Our AI agent checks it against KSA financial regulations in seconds.",
-                    "صِف منتجك أو ارفع مستنده أو سجّله صوتياً، ليطابقه الذكاء الاصطناعي مع اللوائح المالية السعودية خلال ثوانٍ."
+                    "Describe your product or upload its document. Our AI agent checks it against KSA financial regulations in seconds.",
+                    "صِف منتجك أو ارفع مستنده، ليطابقه الذكاء الاصطناعي مع اللوائح المالية السعودية خلال ثوانٍ."
                   )}
                 </p>
                 <button className="cx-hero-cta" onClick={() => scrollToId("input")} type="button">
@@ -1011,6 +1018,49 @@ export default function ComplianceChecker() {
                       />
                       <div className="cx-char-count">{inputText.length} / 4000</div>
                     </div>
+                    <div className="cx-attach-row">
+                      {uploadedFile ? (
+                        <div className="cx-attach-chip">
+                          <span className="cx-attach-chip-icon">
+                            <UploadMini />
+                          </span>
+                          <div className="cx-attach-chip-copy">
+                            <strong>{uploadedFile.name}</strong>
+                            {uploadExtracting ? (
+                              <em style={{ color: "var(--teal-700)" }}>
+                                <span style={{ display: "inline-block", width: 11, height: 11, border: "2px solid rgba(0,107,104,0.2)", borderTopColor: "var(--teal-700)", borderRadius: "50%", animation: "spin 0.8s linear infinite", flexShrink: 0 }} />
+                                {t("Extracting text...", "جارٍ استخراج النص...")}
+                              </em>
+                            ) : uploadError ? (
+                              <em style={{ color: "var(--danger)" }}>{uploadError}</em>
+                            ) : uploadExtractedText ? (
+                              <em>
+                                <CheckMini />
+                                {t("Ready to scan", "جاهز للفحص")}
+                              </em>
+                            ) : null}
+                          </div>
+                          <button className="cx-remove-file" onClick={() => { setUploadedFile(null); setUploadExtractedText(""); setUploadError(null); }} type="button" aria-label={t("Remove file", "إزالة الملف")}>
+                            <CloseMini />
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          <label className="cx-attach-btn">
+                            <input accept=".pdf,.docx,.doc,.txt" onChange={onFileChange} type="file" />
+                            <UploadMini />
+                            {t("Attach a document", "أرفق مستنداً")}
+                            <span>{t("PDF, DOCX or TXT · 20 MB", "PDF أو DOCX أو TXT · 20 م.ب")}</span>
+                          </label>
+                          <span className="cx-sample-file" style={{ marginTop: 0 }}>
+                            {t("or", "أو")}{" "}
+                            <button onClick={useSampleFile} type="button">
+                              {t("use a sample document", "استخدم مستنداً تجريبياً")}
+                            </button>
+                          </span>
+                        </>
+                      )}
+                    </div>
                     <div className="cx-presets">
                       <span>{t("Try an example:", "جرّب مثالاً:")}</span>
                       {PRESETS.map((preset) => (
@@ -1019,55 +1069,6 @@ export default function ComplianceChecker() {
                         </button>
                       ))}
                     </div>
-                  </div>
-                )}
-
-                {mode === "upload" && (
-                  <div className="cx-upload-panel">
-                    {uploadedFile ? (
-                      <div className="cx-file-card">
-                        <div className="cx-file-doc">
-                          <span />
-                        </div>
-                        <div className="cx-file-copy">
-                          <strong>{uploadedFile.name}</strong>
-                          <span>{uploadedFile.meta}</span>
-                          {uploadExtracting ? (
-                            <em style={{ color: "var(--teal-700)" }}>
-                              <span style={{ display: "inline-block", width: 12, height: 12, border: "2px solid rgba(0,107,104,0.2)", borderTopColor: "var(--teal-700)", borderRadius: "50%", animation: "spin 0.8s linear infinite", flexShrink: 0 }} />
-                              {t("Extracting text...", "جارٍ استخراج النص...")}
-                            </em>
-                          ) : uploadError ? (
-                            <em style={{ color: "var(--danger)" }}>{uploadError}</em>
-                          ) : uploadExtractedText ? (
-                            <em>
-                              <CheckMini />
-                              {t("Ready to scan", "جاهز للفحص")}
-                            </em>
-                          ) : null}
-                        </div>
-                        <button className="cx-remove-file" onClick={() => { setUploadedFile(null); setUploadExtractedText(""); setUploadError(null); }} type="button" aria-label={t("Remove file", "إزالة الملف")}>
-                          <CloseMini />
-                        </button>
-                      </div>
-                    ) : (
-                      <>
-                        <label className="cx-upload-zone">
-                          <input accept=".pdf,.docx,.doc,.txt" onChange={onFileChange} type="file" />
-                          <span className="cx-upload-icon">
-                            <UploadMini />
-                          </span>
-                          <strong>{t("Drop your product document here", "اسحب مستند منتجك وأفلته هنا")}</strong>
-                          <span>{t("PDF, DOCX or TXT, up to 20 MB", "PDF أو DOCX أو TXT، حتى 20 ميجابايت")}</span>
-                        </label>
-                        <div className="cx-sample-file">
-                          {t("or", "أو")}{" "}
-                          <button onClick={useSampleFile} type="button">
-                            {t("use a sample document", "استخدم مستنداً تجريبياً")}
-                          </button>
-                        </div>
-                      </>
-                    )}
                   </div>
                 )}
 
@@ -1148,17 +1149,15 @@ export default function ComplianceChecker() {
                 {!canScan && (
                   <p className="cx-cta-hint">
                     {mode === "describe"
-                      ? t("Describe your product above to enable the scan", "اكتب وصف منتجك أعلاه لتفعيل الفحص")
-                      : mode === "upload"
-                        ? t("Upload a product document to enable the scan", "ارفع مستند منتجك لتفعيل الفحص")
-                        : t("Record a voice description to enable the scan", "سجّل وصفاً صوتياً لتفعيل الفحص")}
+                      ? t("Describe your product or attach its document to enable the scan", "اكتب وصف منتجك أو أرفق مستنده لتفعيل الفحص")
+                      : t("Record a voice description to enable the scan", "سجّل وصفاً صوتياً لتفعيل الفحص")}
                   </p>
                 )}
               </div>
             </div>
           </section>
 
-          {appState === "clarifying" && (
+          {(appState === "clarifying" || (hasStarted && clarifyQuestions.length > 0 && clarifiedCount > 0)) && (
             <section className="cx-clarify-section" data-screen-label="Clarify" id="clarify">
               <div className="cx-input-bg" aria-hidden="true">
                 <div className="cx-input-orb one" />
@@ -1168,17 +1167,26 @@ export default function ComplianceChecker() {
               <div className="cx-clarify-shell">
                 <div className="cx-input-heading">
                   <div className="cx-input-kicker">{t("STEP 1.5 · PRODUCT DETAILS", "الخطوة 1.5 · تفاصيل المنتج")}</div>
-                  <h2>{t("Help us understand your product", "ساعدنا على فهم منتجك بشكل أدق")}</h2>
-                  <p>{t("Select the options that best describe your product for a more accurate compliance report.", "اختر الخيارات التي تصف منتجك للحصول على تقرير امتثال أكثر دقة.")}</p>
+                  {hasStarted ? (
+                    <>
+                      <h2>{t("Your product details", "تفاصيل منتجك")}</h2>
+                      <p>{t("The answers you selected were included in the scan. Findings based on them are marked in the report.", "أُدرجت إجاباتك المحددة في الفحص، والنتائج المبنية عليها مُعلَّمة في التقرير.")}</p>
+                    </>
+                  ) : (
+                    <>
+                      <h2>{t("Help us understand your product", "ساعدنا على فهم منتجك بشكل أدق")}</h2>
+                      <p>{t("Select the options that best describe your product for a more accurate compliance report.", "اختر الخيارات التي تصف منتجك للحصول على تقرير امتثال أكثر دقة.")}</p>
+                    </>
+                  )}
                 </div>
 
-                {clarifyLoading ? (
+                {clarifyLoading && !hasStarted ? (
                   <div className="cx-clarify-loading">
                     <span className="cx-spinner" style={{ width: 22, height: 22, borderColor: "rgba(0,107,104,0.25)", borderTopColor: "var(--teal-700)" }} />
                     {t("Analysing your description...", "جارٍ تحليل الوصف...")}
                   </div>
                 ) : (
-                  <div className="cx-clarify-card">
+                  <div className={`cx-clarify-card${hasStarted ? " is-recap" : ""}`}>
                     {clarifyQuestions.map((question, qi) => (
                       <div className="cx-clarify-question" key={question.id}>
                         <div className="cx-clarify-q-label">
@@ -1191,6 +1199,7 @@ export default function ComplianceChecker() {
                             return (
                               <button
                                 className={`cx-clarify-chip${selected ? " is-active" : ""}`}
+                                disabled={hasStarted}
                                 key={option.value}
                                 onClick={() => toggleClarifyAnswer(question.id, option.value, question.allow_multiple)}
                                 type="button"
@@ -1204,15 +1213,17 @@ export default function ComplianceChecker() {
                       </div>
                     ))}
 
-                    <div className="cx-clarify-actions">
-                      <button className="cx-cta is-enabled" onClick={submitClarifications} style={{ marginTop: 0 }} type="button">
-                        <SearchMini />
-                        {t("Continue to Compliance Scan", "متابعة فحص الامتثال")}
-                      </button>
-                      <button className="cx-clarify-skip" onClick={() => runActualScan(effectiveDesc())} type="button">
-                        {t("Skip, use my description as-is", "تخطَّ وابدأ الفحص بالوصف الحالي")}
-                      </button>
-                    </div>
+                    {!hasStarted && (
+                      <div className="cx-clarify-actions">
+                        <button className="cx-cta is-enabled" onClick={submitClarifications} style={{ marginTop: 0 }} type="button">
+                          <SearchMini />
+                          {t("Continue to Compliance Scan", "متابعة فحص الامتثال")}
+                        </button>
+                        <button className="cx-clarify-skip" onClick={() => runActualScan(effectiveDesc())} type="button">
+                          {t("Skip, use my description as-is", "تخطَّ وابدأ الفحص بالوصف الحالي")}
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -1239,7 +1250,13 @@ export default function ComplianceChecker() {
                   <span>{t("Submitted product", "المنتج المُقدَّم")}</span>
                   <i />
                   <strong>{productName}</strong>
-                  <p dir={dirAttr}>{effectiveDesc()}</p>
+                  {uploadedFile && mode === "describe" && (
+                    <em className="cx-strip-file" title={uploadedFile.name}>
+                      <UploadMini />
+                      {uploadedFile.name}
+                    </em>
+                  )}
+                  <p dir={dirAttr}>{(submittedDesc || effectiveDesc()).replace(/\s+/g, " ").trim()}</p>
                   <em>{complexityDefs.find((item) => item.id === complexity)?.label}</em>
                 </div>
 
@@ -1409,8 +1426,8 @@ export default function ComplianceChecker() {
                     </div>
                     <p>
                       {t(
-                        `Checked against ${health?.indexed_articles?.toLocaleString() ?? "—"} indexed regulatory articles · Corpus ${health?.corpus_version ?? ""}`,
-                        `تم الفحص مقابل ${health?.indexed_articles?.toLocaleString("ar-SA") ?? "—"} مادة تنظيمية مفهرسة · إصدار القاعدة ${health?.corpus_version ?? ""}`
+                        `Checked against ${health?.indexed_articles?.toLocaleString() ?? "..."} indexed regulatory articles · Corpus ${health?.corpus_version ?? ""}`,
+                        `تم الفحص مقابل ${health?.indexed_articles?.toLocaleString("ar-SA") ?? "..."} مادة تنظيمية مفهرسة · إصدار القاعدة ${health?.corpus_version ?? ""}`
                       )}
                     </p>
                     {clarifiedCount > 0 && (
@@ -1490,6 +1507,15 @@ export default function ComplianceChecker() {
                                   </div>
                                 )}
                               </div>
+                              {finding.user_answer_ref && (
+                                <div className="cx-user-answer-note" dir="auto">
+                                  <CheckSmall />
+                                  <span>
+                                    {t("Based on your interview answer:", "بناءً على إجابتك في المقابلة:")}{" "}
+                                    <strong>{finding.user_answer_ref}</strong>
+                                  </span>
+                                </div>
+                              )}
                               <div>{t("Analysis", "التحليل")}</div>
                               <p>{finding.analysis}</p>
                               <div>{t("Recommendation", "التوصية")}</div>
@@ -1658,7 +1684,7 @@ function ShieldHero() {
           <path d="M52 26 L148 26 Q170 26 170 48 L170 108 Q170 158 100 198 Q30 158 30 108 L30 48 Q30 26 52 26 Z" />
         </clipPath>
       </defs>
-      <ellipse cx="100" cy="112" rx="112" ry="120" fill="url(#glowGrad)" className="cx-shield-glow" />
+      <ellipse cx="100" cy="110" rx="114" ry="114" fill="url(#glowGrad)" className="cx-shield-glow" />
       <path d="M52 26 L148 26 Q170 26 170 48 L170 108 Q170 158 100 198 Q30 158 30 108 L30 48 Q30 26 52 26 Z" fill="#062d35" stroke="url(#rimGrad)" strokeWidth="8" strokeLinejoin="round" />
       <path d="M64 42 L136 42 Q156 42 156 62 L156 106 Q156 148 100 182 Q44 148 44 106 L44 62 Q44 42 64 42 Z" fill="url(#innerGrad)" />
       <path d="M64 42 L136 42 Q156 42 156 62 L156 106 Q156 148 100 182 Q44 148 44 106 L44 62 Q44 42 64 42 Z" fill="none" stroke="#dffcf7" strokeWidth="1.2" opacity="0.4" />
@@ -1702,6 +1728,13 @@ function TraitIcon({ icon }: { icon: string }) {
         <>
           <circle cx="12" cy="12" r="9" />
           <path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18" />
+        </>
+      )}
+      {icon === "coverage" && (
+        <>
+          <path d="M12 3l9 5-9 5-9-5z" />
+          <path d="M3 12.5l9 5 9-5" />
+          <path d="M3 17l9 5 9-5" />
         </>
       )}
     </svg>
@@ -1791,12 +1824,6 @@ function ModeIcon({ mode }: { mode: Mode }) {
   return (
     <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
       {mode === "describe" && <path d="M4 6h16M4 12h16M4 18h9" />}
-      {mode === "upload" && (
-        <>
-          <path d="M12 16V4M8 8l4-4 4 4" />
-          <path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3" />
-        </>
-      )}
       {mode === "voice" && (
         <>
           <rect x="9" y="3" width="6" height="11" rx="3" />

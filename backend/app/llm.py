@@ -125,6 +125,10 @@ COMPLIANCE_TOOL: dict[str, Any] = {
                             "type": "string",
                             "description": "Actionable recommendation, in the response language",
                         },
+                        "user_answer_ref": {
+                            "type": "string",
+                            "description": "ONLY if this finding's status or risk relies on a detail from the '[Additional details provided by user]' section of the description: copy that short detail here verbatim. Omit for findings based on the main description.",
+                        },
                     },
                 },
             },
@@ -148,6 +152,8 @@ Strict rules — no exceptions:
 - status: compliant = the description explicitly addresses the requirement; gap = the requirement clearly applies and is not met; needs_review = applicability or coverage cannot be determined from the description.
 - risk reflects the severity of THIS requirement for THIS product.
 - Write executive_summary, title, keywords, analysis and recommendation in the response language and tone requested at the end of the user message.
+- The description may end with a section labelled [Additional details provided by user] (Arabic: [تفاصيل إضافية يقدمها المستخدم]) containing answers the user gave in a clarification interview. Treat those answers as facts about the product. When a finding's status or risk is materially based on one of those answers, copy that answer into the finding's user_answer_ref field so the report can attribute it to the user; leave user_answer_ref out otherwise.
+- Never use the em dash character (—) in any text you write; use a comma, colon or period instead.
 - Do not calculate an overall score. The system derives it from your findings."""
 
 
@@ -328,6 +334,7 @@ def _finding_from_tool(item: dict, chunks: list[dict], position: int) -> Finding
         risk=item.get("risk", "medium"),
         analysis=item.get("analysis", ""),
         recommendation=item.get("recommendation", ""),
+        user_answer_ref=str(item.get("user_answer_ref") or ""),
     )
 
 
@@ -483,6 +490,121 @@ def analyze_compliance_stream(
     yield ("complete", _assemble_result(tool_result.input, retrieved_chunks, product_type, lang))
 
 
+# ── Report retone (tone/language re-render, no reclassification) ────────────
+# A tone or language switch must never move the score. score_findings() derives
+# the score purely from finding.status/finding.risk (scoring.py), so this path
+# never lets the LLM touch either field: the tool schema below has no
+# status/risk properties at all, and _assemble step below copies them verbatim
+# from the original findings. The score is therefore identical by construction,
+# not merely "usually stable".
+
+RETONE_TOOL: dict[str, Any] = {
+    "name": "submit_retoned_report",
+    "description": "Rewrite the presentation text of an already-classified compliance report in a new tone/language",
+    "input_schema": {
+        "type": "object",
+        "required": ["findings", "executive_summary"],
+        "properties": {
+            "findings": {
+                "type": "array",
+                "description": "Exactly one entry per input finding, in the same order — do not add, remove, merge or reorder.",
+                "items": {
+                    "type": "object",
+                    "required": ["title", "keywords", "analysis", "recommendation"],
+                    "properties": {
+                        "title": {"type": "string", "description": "Short requirement title, in the response language"},
+                        "keywords": {"type": "array", "items": {"type": "string"}, "description": "2-4 keywords in the response language"},
+                        "analysis": {"type": "string", "description": "How the product relates to this requirement, in the response language"},
+                        "recommendation": {"type": "string", "description": "Actionable recommendation, in the response language"},
+                    },
+                },
+            },
+            "executive_summary": {"type": "string", "description": "2-3 sentence executive summary in the response language"},
+        },
+    },
+}
+
+RETONE_SYSTEM = """You rewrite an already-completed SAMA/SDAIA/AAOIFI/CMA compliance report in a new language and/or tone.
+
+Strict rules — no exceptions:
+- Each finding's status (compliant/gap/needs_review) and risk level are ALREADY DECIDED and given to you as fixed facts, purely for context. You do not output them and must not imply a different classification in the text you write.
+- Return exactly one output finding per input finding, in the same order — do not add, remove, merge or reorder findings.
+- Never use the em dash character (—) in any text you write; use a comma, colon or period instead.
+- Write title, keywords, analysis, recommendation and executive_summary in the response language and tone requested at the end of the user message."""
+
+
+def _build_retone_messages(findings: list[Finding], tone: str, lang: str) -> list[dict]:
+    tone_key = tone if tone in _TONE_INSTRUCTION else "executive"
+    lang_key = lang if lang in ("ar", "en") else "ar"
+    lang_name = "English" if lang_key == "en" else "Arabic (اللغة العربية الفصحى)"
+
+    parts = []
+    for i, f in enumerate(findings, 1):
+        parts.append(
+            f"[{i}] Regulation: {f.requirement.source} — {f.requirement.article} ({f.requirement.regulator or 'SAMA'})\n"
+            f"Article text: {f.requirement.text[:800]}\n"
+            f"Status: {f.status} | Risk: {f.risk} (fixed — for context only, do not restate as a field)\n"
+            f"Current title: {f.requirement.title}\n"
+            f"Current analysis: {f.analysis}\n"
+            f"Current recommendation: {f.recommendation}"
+        )
+    context_block = "Existing findings to rewrite:\n\n" + "\n\n---\n\n".join(parts)
+    instruction_block = (
+        f"Response language: {lang_name}.\n"
+        f"Tone: {_TONE_INSTRUCTION[tone_key][lang_key]}\n"
+        "Rewrite each finding's title, keywords, analysis and recommendation, and write a new executive summary, "
+        "in the requested language and tone. Keep every finding consistent with its given (fixed) status and risk."
+    )
+    return [{
+        "role": "user",
+        "content": [
+            {"type": "text", "text": context_block},
+            {"type": "text", "text": instruction_block},
+        ],
+    }]
+
+
+@_traceable(name="retone_findings")
+def retone_findings(findings: list[Finding], tone: str = "executive", lang: str = "ar") -> tuple[list[Finding], str]:
+    response = _client().messages.create(
+        model=MODEL,
+        max_tokens=4096,
+        temperature=0,
+        system=[{"type": "text", "text": RETONE_SYSTEM, "cache_control": {"type": "ephemeral"}}],
+        messages=_build_retone_messages(findings, tone, lang),
+        tools=[RETONE_TOOL],
+        tool_choice={"type": "any"},
+    )
+
+    tool_result = next((b for b in response.content if b.type == "tool_use"), None)
+    if tool_result is None:
+        raise ValueError("Claude did not call the retone tool")
+
+    items = tool_result.input.get("findings", [])
+    if len(items) != len(findings):
+        raise ValueError(f"Retone returned {len(items)} findings for {len(findings)} inputs")
+
+    rewritten: list[Finding] = []
+    for original, item in zip(findings, items):
+        rewritten.append(Finding(
+            requirement=Requirement(
+                id=original.requirement.id,
+                source=original.requirement.source,
+                article=original.requirement.article,
+                title=item.get("title", original.requirement.title),
+                text=original.requirement.text,
+                keywords=item.get("keywords") or original.requirement.keywords,
+                regulator=original.requirement.regulator,
+            ),
+            status=original.status,      # never taken from the LLM — see module docstring
+            risk=original.risk,           # never taken from the LLM — see module docstring
+            analysis=item.get("analysis", original.analysis),
+            recommendation=item.get("recommendation", original.recommendation),
+            user_answer_ref=original.user_answer_ref,
+        ))
+    return rewritten, tool_result.input.get("executive_summary", "")
+
+
 # ── Regulatory chat ──────────────────────────────────────────────────────────
 
 def answer_regulatory_question(
@@ -499,6 +621,7 @@ def answer_regulatory_question(
 
 قواعد التنسيق (صارمة):
 - نص عادي فقط: لا عناوين ماركداون (#)، لا نجوم (**)، لا رموز تعبيرية، لا جداول، لا فواصل أفقية
+- لا تستخدم الشرطة الطويلة (—) إطلاقاً؛ استخدم الفاصلة أو النقطتين بدلاً منها
 - أجب في فقرة إلى ثلاث فقرات قصيرة كحد أقصى
 - إن لم تجد الإجابة في المواد المقدمة فقل ذلك صراحة ولا تخترع مادة
 

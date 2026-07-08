@@ -13,7 +13,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const res = await fetch(`${BACKEND_URL}/api/check`, {
+    const res = await fetch(`${BACKEND_URL}/api/retone`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
     const err = await res.json().catch(() => ({}));
     return NextResponse.json(err, { status: res.status });
   } catch (e) {
-    console.error("[/api/check] Backend unreachable:", e);
+    console.error("[/api/retone] Backend unreachable:", e);
     return NextResponse.json(
       { detail: "Compliance backend is unreachable." },
       { status: 502 },

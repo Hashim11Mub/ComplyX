@@ -54,7 +54,7 @@ _T = {
         "verbatim": "النص التنظيمي (حرفي)",
         "status": {"compliant": "متوافق", "gap": "فجوة", "needs_review": "بحاجة لمراجعة"},
         "risk_l": {"low": "منخفض", "medium": "متوسط", "high": "مرتفع"},
-        "none": "لا توجد ثغرات — جميع المتطلبات المفحوصة متوافقة.",
+        "none": "لا توجد ثغرات، جميع المتطلبات المفحوصة متوافقة.",
     },
     "en": {
         "dir": "ltr", "title": "Compliance Scan Report", "subtitle": "ComplyX · ضامن",
@@ -68,7 +68,7 @@ _T = {
         "verbatim": "Regulation text (verbatim)",
         "status": {"compliant": "Compliant", "gap": "Gap", "needs_review": "Needs review"},
         "risk_l": {"low": "Low", "medium": "Medium", "high": "High"},
-        "none": "No gaps found — all checked requirements are compliant.",
+        "none": "No gaps found. All checked requirements are compliant.",
     },
 }
 
@@ -94,7 +94,7 @@ def _build_html(req: ReportPdfRequest) -> str:
               <span class="pill" style="color:{_STATUS_COLOR[f.status]}">{t['status'][f.status]} · {t['risk_l'].get(f.risk, f.risk)}</span></td>
           <td>{_e(f.recommendation)}</td>
           <td>{_owner(f.recommendation + ' ' + f.analysis, lang)}</td>
-          <td class="basis">{_e(f.requirement.regulator or 'SAMA')} — {_e(f.requirement.source)}<br>{_e(f.requirement.article)}</td>
+          <td class="basis">{_e(f.requirement.regulator or 'SAMA')} · {_e(f.requirement.source)}<br>{_e(f.requirement.article)}</td>
         </tr>"""
         for i, f in enumerate(actionable, 1)
     ) or f'<tr><td colspan="5" class="empty">{t["none"]}</td></tr>'

@@ -16,6 +16,27 @@ export async function checkCompliance(
   return (await response.json()) as ComplianceResult;
 }
 
+/**
+ * Re-render an existing report in a new tone/language without re-classifying
+ * anything. Sends the existing findings (with their status/risk) back; the
+ * backend never lets the LLM revise those two fields, so the compliance
+ * score is guaranteed to stay identical to the original scan.
+ */
+export async function retoneReport(
+  findings: Finding[],
+  product_type: ProductType,
+  tone: "simple" | "executive" | "technical",
+  lang: "ar" | "en"
+) {
+  const response = await fetch("/api/retone", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ product_type, tone, lang, findings })
+  });
+  if (!response.ok) throw new Error("تعذر إعادة صياغة التقرير");
+  return (await response.json()) as ComplianceResult;
+}
+
 type StreamHandlers = {
   onRetrieved?: (articles: RetrievedArticle[]) => void;
   onFinding?: (finding: Finding) => void;

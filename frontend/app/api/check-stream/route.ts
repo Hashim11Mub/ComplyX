@@ -5,7 +5,7 @@ const BACKEND_URL = process.env.BACKEND_URL;
 export async function POST(request: NextRequest) {
   if (!BACKEND_URL) {
     return Response.json(
-      { detail: "BACKEND_URL is not configured — start the FastAPI backend and set BACKEND_URL." },
+      { detail: "BACKEND_URL is not configured. Start the FastAPI backend and set BACKEND_URL." },
       { status: 503 },
     );
   }

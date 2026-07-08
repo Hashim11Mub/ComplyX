@@ -33,7 +33,17 @@ projects). If these are free on your machine you can still use them; if not, por
 - Qdrant: 6333 via `docker compose up -d qdrant` (named volume `complyx_qdrant_storage` — data survives container removal; do NOT use a bare `docker run`)
 - One-shot boot: `./start-demo.ps1` (checks every layer, fails loudly)
 
-## Current State (as of 2026-07-04 — update this section + commit when a phase changes)
+## Current State (as of 2026-07-08 — update this section + commit when a phase changes)
+
+**2026-07-08 update (stable retone + interview attribution + input merge + UI polish):**
+- **`POST /api/retone`** (`backend/app/routes/retone.py`, `llm.py::retone_findings`, `frontend/app/api/retone/route.ts`, `api.ts::retoneReport`): tone/language switches in the report re-render ONLY the presentation text (title/keywords/analysis/recommendation/summary) from the existing findings. The retone tool schema has no status/risk fields and the backend copies both from the original findings, so the compliance score is identical by construction across tone/lang switches (verified: executive vs simple, same findings, same score). `handleComplexityChange`/`handleLangChange` call `retoneReport()`, NOT `checkCompliance()`.
+- **Interview attribution** (`Finding.user_answer_ref` in `models.py` + `types.ts` — contract change, both updated together): when a finding's status/risk relies on an answer from the clarification interview, the LLM copies that answer into `user_answer_ref`; the UI shows a gold "Based on your interview answer: …" note in the expanded finding. Retone preserves the field verbatim (verified end-to-end).
+- **Clarify recap:** the step 1.5 section stays mounted after the scan (read-only, chips disabled, actions hidden) whenever the user answered at least one question. `startScan()` now resets `clarifiedCount` (stale-chip fix).
+- **Input modes merged:** `Mode = "describe" | "voice"` — upload is now an attach button/chip inside the describe panel (`.cx-attach-row`). `effectiveDesc()` combines typed text + extracted document text with an "[Attached document content]" separator. Submitted-product strip shows the attached file name and whitespace-collapses the description; product fallback label is "General financial product" (was "Unspecified product").
+- **Voice fix:** `.cx-mic-pulse` overlays had no `pointer-events: none` and swallowed the stop-recording click.
+- **Hero/UI:** eyebrow tag removed; subtitle is "Describe your product or upload its document…" (voice mention removed, AR+EN); `html[lang="ar"] .cx-hero-title` line-height 1.55 (Cairo overlap fix); shield glow ellipse resized + `overflow: visible` (was clipped at bottom/sides); traits are now Instant matching / **Verbatim article citations** / **Full regulatory coverage** (brighter cards rgba .13); teal gradient active states on mode buttons, product cards (white icons), complexity toggle; analysis-step journey card is now a white surface with scoped child overrides.
+
+**⚠ Copy rule (user-set, 2026-07-08): never use the em dash character (—) in any user-visible copy or LLM-generated text, in either language. Use a comma, colon, or period instead. The compliance/retone/chat prompts all carry an explicit no-em-dash instruction; keep it when editing them.**
 
 **Frontend — v2 (streaming + multi-regulator, verified end-to-end in browser 2026-07-04).**
 Located in `frontend/`. Next.js 15, Arabic RTL. New in v2:

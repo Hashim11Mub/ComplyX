@@ -428,28 +428,6 @@ button:disabled {
   z-index: 2;
 }
 
-.cx-eyebrow {
-  align-items: center;
-  background: rgba(183, 154, 87, 0.16);
-  border: 1px solid rgba(183, 154, 87, 0.35);
-  border-radius: 22px;
-  color: var(--gold-soft);
-  display: inline-flex;
-  font-size: 11px;
-  font-weight: 800;
-  gap: 8px;
-  letter-spacing: 0.13em;
-  margin-bottom: 20px;
-  padding: 6px 14px;
-}
-
-.cx-eyebrow span {
-  background: var(--gold);
-  border-radius: 50%;
-  height: 6px;
-  width: 6px;
-}
-
 .cx-hero-title {
   color: #ffffff;
   font-size: 40px;
@@ -457,6 +435,12 @@ button:disabled {
   line-height: 1.22;
   margin: 0 0 16px;
   text-wrap: balance;
+}
+
+/* Cairo's Arabic glyphs (ascenders/diacritics) collide at 1.22; give the
+   Arabic headline more breathing room so the two lines never overlap. */
+html[lang="ar"] .cx-hero-title {
+  line-height: 1.55;
 }
 
 .cx-hero-subtitle {
@@ -510,12 +494,15 @@ button:disabled {
 
 .cx-shield-hero {
   filter: drop-shadow(0 32px 52px rgba(3, 22, 26, 0.55));
+  /* The glow ellipse extends past the viewBox; without this the SVG clips it
+     into a hard edge at the bottom and flat sides. */
+  overflow: visible;
   transform-style: preserve-3d;
 }
 
 .cx-shield-glow {
   animation: glowPulse 4.5s ease-in-out infinite;
-  transform-origin: 100px 112px;
+  transform-origin: 100px 110px;
 }
 
 .cx-shield-shine {
@@ -537,23 +524,26 @@ button:disabled {
 }
 
 .cx-trait-card {
-  backdrop-filter: blur(6px);
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(223, 252, 247, 0.13);
+  backdrop-filter: blur(8px);
+  background: rgba(255, 255, 255, 0.13);
+  border: 1px solid rgba(223, 252, 247, 0.26);
   border-radius: 15px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
   padding: 18px 16px;
-  transition: border-color 0.22s ease, transform 0.22s ease;
+  transition: background 0.22s ease, border-color 0.22s ease, transform 0.22s ease;
 }
 
 .cx-trait-card:hover {
-  border-color: rgba(183, 154, 87, 0.55);
+  background: rgba(255, 255, 255, 0.17);
+  border-color: rgba(183, 154, 87, 0.6);
   transform: translateY(-4px);
 }
 
 .cx-trait-icon {
   align-items: center;
-  background: rgba(18, 168, 160, 0.22);
+  background: rgba(18, 168, 160, 0.34);
   border-radius: 11px;
+  box-shadow: inset 0 0 0 1px rgba(143, 232, 223, 0.25);
   display: flex;
   height: 40px;
   justify-content: center;
@@ -569,7 +559,7 @@ button:disabled {
 }
 
 .cx-trait-card p {
-  color: #9dc4c0;
+  color: #d3ebe7;
   font-size: 12.5px;
   line-height: 1.55;
   margin: 0;
@@ -700,9 +690,9 @@ button:disabled {
 }
 
 .cx-mode-btn.is-active {
-  background: #ffffff;
-  box-shadow: 0 2px 8px rgba(7, 55, 67, 0.14), inset 0 0 0 1px rgba(0, 107, 104, 0.14);
-  color: var(--teal-700);
+  background: linear-gradient(135deg, var(--teal-500), var(--teal-700));
+  box-shadow: 0 6px 16px rgba(0, 107, 104, 0.3);
+  color: #ffffff;
 }
 
 .cx-input-card {
@@ -767,21 +757,25 @@ button:disabled {
 }
 
 .cx-product-card.is-active {
-  background: #e8f5f3;
+  background: linear-gradient(150deg, var(--teal-500), var(--teal-700));
   border-color: var(--teal-700);
-  box-shadow: 0 0 0 4px rgba(0, 107, 104, 0.1);
-  color: var(--teal-700);
+  box-shadow: 0 10px 24px -10px rgba(0, 107, 104, 0.55);
+  color: #ffffff;
 }
 
 .cx-product-card.is-active > svg {
-  background: #ffffff;
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.cx-product-card.is-active .cx-product-label {
+  color: #ffffff;
 }
 
 .cx-product-card.is-active::after {
   align-items: center;
-  background: var(--teal-700);
+  background: #ffffff;
   border-radius: 50%;
-  color: #ffffff;
+  color: var(--teal-700);
   content: "✓";
   display: flex;
   font-size: 10px;
@@ -1043,6 +1037,9 @@ button:disabled {
   border: 2px solid var(--teal-500);
   border-radius: 50%;
   inset: 0;
+  /* Overlays paint above the static mic button; without this they swallow
+     the click that is supposed to stop the recording. */
+  pointer-events: none;
   position: absolute;
 }
 
@@ -1332,12 +1329,13 @@ button:disabled {
   grid-template-columns: 0.92fr 1.08fr;
 }
 
+/* White surface on the dark analysis step: the journey card reads like a
+   sheet of the final report being written live. */
 .cx-journey-card {
-  backdrop-filter: blur(6px);
-  background: rgba(255, 255, 255, 0.07);
-  border: 1px solid rgba(223, 252, 247, 0.16);
+  background: #ffffff;
+  border: 1px solid rgba(223, 252, 247, 0.4);
   border-radius: 20px;
-  box-shadow: inset 0 1px 0 rgba(223, 252, 247, 0.08);
+  box-shadow: 0 24px 54px -22px rgba(3, 22, 26, 0.6);
   display: flex;
   flex-direction: column;
   padding: 26px 24px;
@@ -1345,7 +1343,7 @@ button:disabled {
 
 .cx-journey-kicker {
   align-items: center;
-  color: #8fe8df;
+  color: var(--teal-700);
   display: flex;
   font-size: 11px;
   font-weight: 800;
@@ -1357,12 +1355,54 @@ button:disabled {
 
 .cx-journey-kicker span {
   animation: spin 0.8s linear infinite;
-  border: 2px solid rgba(143, 232, 223, 0.3);
+  border: 2px solid rgba(0, 107, 104, 0.22);
   border-radius: 50%;
-  border-top-color: #8fe8df;
+  border-top-color: var(--teal-700);
   flex-shrink: 0;
   height: 13px;
   width: 13px;
+}
+
+/* Journey card children were tuned for the dark glass card; re-tune for white */
+.cx-journey-card .cx-step-node {
+  background: var(--teal-50);
+  border-color: #d3e2e2;
+}
+
+.cx-journey-card .cx-step-node.is-active {
+  background: rgba(18, 168, 160, 0.14);
+  border-color: var(--gold);
+}
+
+.cx-journey-card .cx-step-node.is-done {
+  background: var(--ok);
+  border-color: var(--ok);
+}
+
+.cx-journey-card .cx-step-node.is-active .cx-spinner {
+  border-color: rgba(0, 107, 104, 0.25);
+  border-top-color: var(--teal-700);
+}
+
+.cx-journey-card .cx-connector {
+  background: #e3edec;
+}
+
+.cx-journey-card .cx-step-label {
+  color: var(--muted);
+}
+
+.cx-journey-card .cx-step-label.is-current {
+  color: var(--ink);
+}
+
+.cx-journey-card .cx-step-label.is-done {
+  color: var(--teal-700);
+}
+
+.cx-journey-card .cx-step-sub,
+.cx-journey-card .cx-step-sub.is-wait {
+  color: var(--gold-deep);
 }
 
 .cx-journey-list {
@@ -1728,7 +1768,9 @@ strong.cx-slot-shimmer {
 }
 
 .cx-new-scan:hover {
-  background: #e5eeee;
+  background: #e8f5f3;
+  border-color: #8fbfba;
+  color: var(--teal-700);
 }
 
 .cx-score-panel {
@@ -1889,8 +1931,9 @@ strong.cx-slot-shimmer {
 }
 
 .cx-complexity-row button.is-active {
-  background: #ffffff;
-  color: var(--teal-700);
+  background: linear-gradient(135deg, var(--teal-500), var(--teal-700));
+  box-shadow: 0 4px 12px rgba(0, 107, 104, 0.28);
+  color: #ffffff;
 }
 
 .cx-summary-line {
@@ -1929,7 +1972,7 @@ strong.cx-slot-shimmer {
 }
 
 .cx-findings-head span {
-  color: var(--muted);
+  color: var(--teal-700);
   font-size: 11.5px;
   font-weight: 800;
   letter-spacing: 0.06em;
@@ -2841,6 +2884,168 @@ html[dir="rtl"] .cx-chat-drawer {
   height: 28px;
   padding: 0 12px;
   transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+/* ── Inline document attach (merged describe+upload flow) ──────────────── */
+
+.cx-attach-row {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.cx-attach-btn {
+  align-items: center;
+  background: #f8fbfb;
+  border: 1.5px dashed #bcd4d2;
+  border-radius: 12px;
+  color: var(--teal-700);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 13px;
+  font-weight: 700;
+  gap: 8px;
+  padding: 9px 16px;
+  transition: background 0.18s ease, border-color 0.18s ease;
+}
+
+.cx-attach-btn:hover {
+  background: #f0f8f7;
+  border-color: var(--teal-700);
+}
+
+.cx-attach-btn input {
+  display: none;
+}
+
+.cx-attach-btn svg {
+  height: 17px;
+  width: 17px;
+}
+
+.cx-attach-btn span {
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.cx-attach-chip {
+  align-items: center;
+  background: #f4f8f8;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  display: inline-flex;
+  gap: 10px;
+  max-width: 100%;
+  padding: 8px 10px 8px 14px;
+}
+
+.cx-attach-chip-icon {
+  align-items: center;
+  background: rgba(18, 168, 160, 0.14);
+  border-radius: 9px;
+  display: flex;
+  flex-shrink: 0;
+  height: 32px;
+  justify-content: center;
+  width: 32px;
+}
+
+.cx-attach-chip-icon svg {
+  height: 16px;
+  width: 16px;
+}
+
+.cx-attach-chip-copy {
+  min-width: 0;
+}
+
+.cx-attach-chip-copy strong {
+  color: var(--ink);
+  display: block;
+  font-size: 13px;
+  font-weight: 700;
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cx-attach-chip-copy em {
+  align-items: center;
+  color: var(--ok);
+  display: flex;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 700;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+/* ── Submitted strip: attached-file chip (upload provenance) ───────────── */
+
+.cx-submitted-strip em.cx-strip-file {
+  align-items: center;
+  background: rgba(143, 232, 223, 0.12);
+  border: 1px solid rgba(143, 232, 223, 0.3);
+  color: #8fe8df;
+  display: inline-flex;
+  gap: 6px;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cx-submitted-strip em.cx-strip-file svg {
+  flex-shrink: 0;
+  height: 12px;
+  stroke: #8fe8df;
+  width: 12px;
+}
+
+/* ── Finding attribution to interview answers ──────────────────────────── */
+
+.cx-finding-body .cx-user-answer-note {
+  align-items: flex-start;
+  background: rgba(183, 154, 87, 0.09);
+  border: 1px solid rgba(183, 154, 87, 0.32);
+  border-radius: 9px;
+  color: #5c4a12;
+  display: flex;
+  font-size: 12.5px;
+  font-weight: 600;
+  gap: 8px;
+  letter-spacing: 0;
+  line-height: 1.6;
+  margin-bottom: 14px;
+  padding: 9px 12px;
+  text-transform: none;
+}
+
+.cx-finding-body .cx-user-answer-note svg {
+  flex-shrink: 0;
+  margin-top: 3px;
+}
+
+.cx-finding-body .cx-user-answer-note strong {
+  font-weight: 800;
+}
+
+/* ── Clarify recap (step 1.5 stays visible after the scan) ─────────────── */
+
+.cx-clarify-card.is-recap .cx-clarify-chip:disabled {
+  cursor: default;
+}
+
+.cx-clarify-card.is-recap .cx-clarify-chip:disabled:not(.is-active) {
+  opacity: 0.45;
+}
+
+.cx-clarify-card.is-recap .cx-clarify-chip.is-active {
+  box-shadow: none;
 }
 
 .cx-coverage-chip.is-covered {

@@ -25,6 +25,9 @@ class Finding(BaseModel):
     risk: RiskLevel
     analysis: str
     recommendation: str
+    # Set only when the finding's status/risk relies on a detail the user gave
+    # in the clarification interview; the UI attributes it ("based on your answer").
+    user_answer_ref: str = ""
 
 
 class ComplianceResult(BaseModel):
@@ -44,6 +47,16 @@ class CheckRequest(BaseModel):
     tone: str = "executive"  # simple | executive | technical
     lang: str = "ar"         # ar | en
     corpora: list[str] | None = None  # e.g. ["sama","pdpl","shariah","cma"]; None = all
+
+
+class RetoneRequest(BaseModel):
+    """Re-render an existing report in a new tone/language without
+    re-classifying anything. `findings` carry their original status/risk,
+    which are never sent back to the LLM for revision (see llm.retone_findings)."""
+    product_type: ProductType
+    tone: str = "executive"
+    lang: str = "ar"
+    findings: list[Finding]
 
 
 class ClarifyOption(BaseModel):

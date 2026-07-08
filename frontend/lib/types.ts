@@ -45,6 +45,8 @@ export type Finding = {
   risk: "low" | "medium" | "high";
   analysis: string;
   recommendation: string;
+  /** Set when the finding relies on an answer the user gave in the clarification interview. */
+  user_answer_ref?: string;
 };
 
 export type ComplianceResult = {
