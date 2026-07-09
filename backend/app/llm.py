@@ -27,6 +27,7 @@ from .models import (
     ClarifyOption, ClarifyQuestion, ClarifyResponse,
 )
 from .scoring import score_findings
+from .textclean import clean_excerpt
 
 # Enable LangSmith tracing when configured
 if settings.langchain_tracing_v2 and settings.langchain_api_key:
@@ -326,7 +327,10 @@ def _finding_from_tool(item: dict, chunks: list[dict], position: int) -> Finding
             source=chunk.get("regulation_name", ""),
             article=chunk.get("article_number", ""),
             title=item.get("title", ""),
-            text=chunk.get("text", "")[:1200],
+            # Trim windowed-chunk edges to sentence boundaries; the cleaner
+            # only removes from the ends, so the stored quote stays a verbatim
+            # substring of the retrieved chunk (faithfulness by construction).
+            text=clean_excerpt(chunk.get("text", ""), 1200),
             keywords=item.get("keywords", []) or [],
             regulator=chunk.get("regulator", ""),
         ),

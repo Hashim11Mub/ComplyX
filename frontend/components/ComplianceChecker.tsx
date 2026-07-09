@@ -1808,8 +1808,19 @@ export default function ComplianceChecker() {
                     onClick={async () => {
                       if (!complianceResult) return;
                       setPdfBusy(true);
+                      // Answered interview Q&A feed the PDF appendix; findings
+                      // cite these answers via user_answer_ref.
+                      const interview = clarifyQuestions
+                        .filter((question) => (clarifyAnswers[question.id] ?? []).length > 0)
+                        .map((question) => {
+                          const values = clarifyAnswers[question.id] ?? [];
+                          const labels = question.options
+                            .filter((option) => values.includes(option.value))
+                            .map((option) => (isAr ? option.label_ar : option.label_en));
+                          return { question: isAr ? question.text_ar : question.text_en, answer: labels.join(", ") };
+                        });
                       try {
-                        await downloadPdfReport(complianceResult, lang, productName);
+                        await downloadPdfReport(complianceResult, lang, productName, interview, refNumber);
                       } catch {
                         downloadReport(); // graceful fallback to the plain-text export
                       } finally {

@@ -19,6 +19,18 @@ LOW_RISK_MIN = 82
 MEDIUM_RISK_MIN = 58
 
 
+def projected_score(findings: list[Finding]) -> int:
+    """Score if every gap were resolved (its penalty removed) while
+    needs_review items stay as they are. Used by the report's "path to
+    compliant" line; exact arithmetic from the same penalty table, so the
+    projection is provable, never an estimate."""
+    score = 100
+    for finding in findings:
+        if finding.status != "gap":
+            score -= _PENALTY.get(finding.status, {}).get(finding.risk, 0)
+    return max(5, min(100, score))
+
+
 def score_findings(findings: list[Finding]) -> tuple[int, RiskLevel, int]:
     """Return (compliance_score, risk_level, gaps_count) derived from findings."""
     score = 100

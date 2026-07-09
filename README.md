@@ -212,7 +212,7 @@ Multipart file upload (PDF via PyMuPDF, DOCX, TXT; max 20 MB, text capped at 8,0
 
 ### `POST /api/report-pdf`
 
-`{ "result": ComplianceResult, "lang": "ar|en", "product_label": "string" }` returns a branded bilingual PDF (Remediation Roadmap plus full findings). Requires Playwright Chromium; returns 501 with install instructions otherwise.
+`{ "result": ComplianceResult, "lang": "ar|en", "product_label": "string", "session_ref": "string", "interview": [{ "question", "answer" }] }` returns a branded bilingual PDF: a cover page with score dial and stat cards, a "path to compliant" score projection (exact arithmetic from the scoring formula), findings-by-regulator summary, remediation roadmap with ownership and sign-off boxes, full findings with sentence-boundary-trimmed verbatim quotes and interview-answer attributions, an interview Q&A appendix, a scope-and-method statement, and footers carrying the session reference, disclaimer, and page numbers. `interview` and `session_ref` are optional. Requires Playwright Chromium; returns 501 with install instructions otherwise.
 
 ### `GET /health`
 

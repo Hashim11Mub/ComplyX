@@ -110,12 +110,14 @@ export async function fetchHealth(): Promise<HealthInfo | null> {
 export async function downloadPdfReport(
   result: ComplianceResult,
   lang: "ar" | "en",
-  product_label: string
+  product_label: string,
+  interview: { question: string; answer: string }[] = [],
+  session_ref = ""
 ): Promise<void> {
   const response = await fetch("/api/report-pdf", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ result, lang, product_label })
+    body: JSON.stringify({ result, lang, product_label, interview, session_ref })
   });
   if (!response.ok) throw new Error(`pdf export failed (${response.status})`);
   const blob = await response.blob();
