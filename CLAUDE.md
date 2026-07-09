@@ -33,7 +33,11 @@ projects). If these are free on your machine you can still use them; if not, por
 - Qdrant: 6333 via `docker compose up -d qdrant` (named volume `complyx_qdrant_storage` — data survives container removal; do NOT use a bare `docker run`)
 - One-shot boot: `./start-demo.ps1` (checks every layer, fails loudly)
 
-## Current State (as of 2026-07-08 — update this section + commit when a phase changes)
+## Current State (as of 2026-07-09 — update this section + commit when a phase changes)
+
+**2026-07-09 update 4 (clarify→scan transition fix + corpus-expansion copy):**
+- **No more flash-mount of Step 1.5 when 0 questions are needed.** `startScan()` (`ComplianceChecker.tsx`) used to set `appState="clarifying"` immediately, then flip straight to `"scanning"` once `getProductQuestions()` resolved — mounting and instantly unmounting the clarify section, which read as a jump-cut. Fixed by staying on `appState="input"` while the clarify check is in flight (the CTA button shows a spinner + "Analysing your description..." in its place instead) and only calling `setAppState("clarifying")` once there are actually questions to show; the 0-question path calls `runActualScan()` directly from `"input"`. The now-dead `clarifyLoading && !hasStarted` branch inside the clarify section (and its `.cx-clarify-loading` CSS) was removed since the section only ever mounts pre-loaded now. `.cx-scan-section` gained `animation: revealUp 0.55s ease both` so the direct input→scanning jump animates in the same way the clarify path always did. Verified live via a headless Playwright run against the real backend: state log went `input → scan` with no `clarify` in between, button showed the spinner text, scan section rendered stable post-scroll.
+- **Corpus-expansion copy pass:** bumped every hardcoded "9,000"/"9,108"/"13 PDF" claim to the current 9,506/17-PDF state — hero trait card copy (`ComplianceChecker.tsx`), the PDF report's Qdrant-unreachable fallback string (`report_pdf.py`), both READMEs, and this file's setup instructions. The live-computed numbers (topbar health badge, chip counts, PDF "Scope and method" line) needed no code change — confirmed via `/health` and a live screenshot showing "9,506" end to end. The 20-product eval's quality-numbers table (README + this file) was annotated with a note that it was measured against the smaller 9,108-chunk corpus rather than silently rewritten, since the eval hasn't been re-run.
 
 **2026-07-08 update (stable retone + interview attribution + input merge + UI polish):**
 - **`POST /api/retone`** (`backend/app/routes/retone.py`, `llm.py::retone_findings`, `frontend/app/api/retone/route.ts`, `api.ts::retoneReport`): tone/language switches in the report re-render ONLY the presentation text (title/keywords/analysis/recommendation/summary) from the existing findings. The retone tool schema has no status/risk fields and the backend copies both from the original findings, so the compliance score is identical by construction across tone/lang switches (verified: executive vs simple, same findings, same score). `handleComplexityChange`/`handleLangChange` call `retoneReport()`, NOT `checkCompliance()`.
@@ -115,7 +119,15 @@ Run `pip install python-multipart python-docx` after pulling on any machine.
 - Source faithfulness: not computed in stored results (the `_retrieved_sources` private fields were stripped before saving)
 - Notable: p08 score=28/high, p11 score=18/high — appropriately low for non-compliant products; p01–p07 cluster around 62/medium
 
-**Qdrant state (2026-07-04):** **9,108 chunks from 13 PDFs** — sama 5,432 · shariah 3,334 · cma 212 · pdpl 130 (corpus 2026-07, fixed windowing chunker). Local to each machine — run ingest per machine (see setup below); expect ~2–4h of CPU embedding for the full corpus.
+**Qdrant state (2026-07-09):** **9,506 chunks from 17 PDFs** — sama 5,432 · shariah 3,334 · cma 573 · pdpl 167 (corpus 2026-07, fixed windowing chunker). Local to each machine — run ingest per machine (see setup below); expect ~2–4h of CPU embedding for the full corpus.
+
+**2026-07-09: Corpus expansion (CMA depth + PDPL standard).** Added 4 PDFs the user sourced and vetted with Claude for scope fit (SDAIA AI Ethics Principles and 3 ZATCA tax/e-invoicing docs were deliberately excluded — different regulatory domain than SAMA/CMA/PDPL/Shariah, would dilute the Financial Regulations framing):
+- `CMA_Law.pdf` (60pp → 102 chunks, sliding-window strategy — no article-pattern match) — the base Capital Market Law; previously only its implementing regulation was indexed
+- `CMA_IFRs_Regulations.pdf` (107pp → 228 chunks, article strategy) — Investment Funds Regulations
+- `CMA_FinTech_Lab_en.pdf` (15pp → 31 chunks, article strategy) — CMA's fintech regulatory-sandbox permit instructions, the CMA-side counterpart to the SAMA Regulatory Sandbox doc
+- `SDAIA_National_Data_Management_and_Personal_Data_Protection_Standards.pdf` (173pp → 37 chunks, article strategy) — NDMO's operational data-protection standard (v1.5, 2021); confirmed non-duplicate of the existing PDPL law + implementing regs before indexing
+
+`ingest.py::_CORPUS_RULES` gained two rules to auto-tag these correctly: `("sdaia", "pdpl", "SDAIA")` and `("cma_", "cma", "CMA")` — neither collides with existing filenames. Ingest was run scoped to only these 4 files (temp dir, not the full `data/regulations/`) since `run()` re-embeds every PDF found in `--dir` with no resume — scoping avoided a multi-hour re-embed of the untouched 9,108 chunks. Verified post-ingest via direct Qdrant per-corpus counts: sama unchanged 5,432, pdpl 130→167, shariah unchanged 3,334, cma 212→573, `other` bucket still 0 (nothing mistagged).
 
 **NOT YET DONE (post-hackathon):**
 - LangGraph multi-tool agent (Phase 1) — the streaming pipeline covers the demo story; revisit later
@@ -134,7 +146,7 @@ QDRANT_PORT=6333
 QDRANT_COLLECTION=sama_regulations
 ```
 
-**Step 2 — Get SAMA PDFs** — obtain the 8 PDFs from your teammate and place them in `backend/data/regulations/`. They are not in the repo (large files, public documents). Download from https://rulebook.sama.gov.sa if needed.
+**Step 2 — Get the regulation PDFs** — obtain all 17 PDFs from your teammate (8 SAMA + 4 PDPL/SDAIA + 1 Shariah/AAOIFI + 4 CMA — see the full list under Regulation Data Sources below) and place them in `backend/data/regulations/`. They are not in the repo (large files, public documents; the folder is gitignored). The 8 SAMA rulebooks are downloadable from https://rulebook.sama.gov.sa if needed; the rest were sourced individually — ask whoever ran the 2026-07-09 CMA/PDPL expansion for the other 4.
 
 **Step 3 — Start Qdrant (named volume — do NOT use bare docker run):**
 ```powershell
@@ -146,7 +158,7 @@ docker compose up -d qdrant
 pip install -r requirements.txt
 python -m app.ingest --dir data/regulations
 ```
-First run downloads the multilingual-e5-large model (~1.1GB). Embedding the full 13-PDF corpus takes ~2–4h on CPU. Watch for `Total in Qdrant: 9108` (±small drift from window-dedup) at the end.
+First run downloads the multilingual-e5-large model (~1.1GB). Embedding the full 17-PDF corpus takes ~2–4h on CPU. Watch for `Total in Qdrant: 9506` (±small drift from window-dedup) at the end.
 
 **Step 5 — Start backend** (from `backend/`; port 8001 — see Ports section above):
 ```powershell
@@ -276,14 +288,19 @@ All PDFs live in `backend/data/regulations/` (not in git — large files). After
 - `Payment_Systems_and_Payment_Services_Providers_SAMA_Rulebook.pdf`
 - `Regulatory_Sandbox_SAMA_Rulebook.pdf`
 
-**SDAIA (Personal Data Protection)** — https://sdaia.gov.sa — 3 PDFs indexed (130 chunks, corpus tag `pdpl`):
-- `PersonalDataProtectionLaw.pdf`, `ImplementingRegulationPersonalDataProtectionLaw.pdf`, `RegulationonPersonalData.pdf`
+**SDAIA (Personal Data Protection)** — https://sdaia.gov.sa — 4 PDFs indexed (167 chunks, corpus tag `pdpl`):
+- `PersonalDataProtectionLaw.pdf`, `ImplementingRegulationPersonalDataProtectionLaw.pdf`, `RegulationonPersonalData.pdf`, `SDAIA_National_Data_Management_and_Personal_Data_Protection_Standards.pdf` (NDMO operational standard, added 2026-07-09)
 
 **AAOIFI (Shariah Standards)** — 1 PDF indexed (3,334 chunks, corpus tag `shariah`):
 - `Shariaa-Standards-ENG.pdf`
 
-**CMA (Capital Market Authority)** — 1 PDF indexed (212 chunks, corpus tag `cma`):
+**CMA (Capital Market Authority)** — 4 PDFs indexed (573 chunks, corpus tag `cma`):
 - `CapitalMarketInstitutionsRegulations.pdf`
+- `CMA_Law.pdf` (the base Capital Market Law, added 2026-07-09)
+- `CMA_IFRs_Regulations.pdf` (Investment Funds Regulations, added 2026-07-09)
+- `CMA_FinTech_Lab_en.pdf` (fintech regulatory-sandbox permit instructions, added 2026-07-09)
+
+**Deliberately excluded (2026-07-09, user decision):** SDAIA AI Ethics Principles and 3 ZATCA tax/e-invoicing docs (VAT implementing regs, e-invoicing regulation, e-invoicing implementation resolution). Different regulatory domain from the four corpora above (AI governance and tax authority, not financial-sector regulation) — would dilute the Financial Regulations track framing. Revisit post-hackathon if the product story needs AI-governance or tax-invoicing compliance checks; would need a new corpus tag plus frontend `CORPUS_DEFS` scope chip, not just a dropped-in PDF.
 
 Corpus tags are inferred from filenames in `ingest.py::corpus_for_filename` — new PDFs whose names don't match any rule land in corpus `other` (never silently attributed to SAMA).
 
@@ -291,7 +308,7 @@ Corpus tags are inferred from filenames in `ingest.py::corpus_for_filename` — 
 
 ## Quality Targets
 
-**Measured (20-product eval, 2026-07-04, v2 pipeline, limit=12, full 9,108-chunk corpus):**
+**Measured (20-product eval, 2026-07-04, v2 pipeline, limit=12, full 9,108-chunk corpus — corpus has since grown to 9,506 chunks on 2026-07-09; re-run before quoting these numbers against the larger corpus):**
 - 20/20 valid structured output (0 failures)
 - **Source faithfulness: 1.000** (159/159) — by construction (backend injects sources from retrieved chunks)
 - **Quote faithfulness: 1.000** (159/159; was **0.432** before A-1) — by construction; this is the before/after

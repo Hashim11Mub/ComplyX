@@ -657,13 +657,13 @@ export default function ComplianceChecker() {
     setClarifyAnswers({});
     setClarifiedCount(0);
     setClarifyLoading(true);
-    setAppState("clarifying");
-    const scrollTimer = setTimeout(() => scrollToId("clarify"), 80);
-    timers.current.push(scrollTimer);
+    // Stay on the input step while we determine whether follow-up questions
+    // are needed — the CTA button shows the "analysing" state below. This
+    // avoids flash-mounting the step 1.5 screen only to tear it down a
+    // moment later when the product turns out not to need any questions.
 
     const productType: BackendProductType = selectedProduct ? (PRODUCT_TYPE_MAP[selectedProduct] ?? "general") : "general";
     const { questions } = await getProductQuestions(effectiveDesc(), productType, lang);
-    setClarifyLoading(false);
 
     let effectiveQuestions = questions;
     if (effectiveQuestions.length === 0) {
@@ -675,10 +675,15 @@ export default function ComplianceChecker() {
       effectiveQuestions = FALLBACK_CLARIFY.filter((question) => missing.has(question.id)).slice(0, 4);
     }
 
+    setClarifyLoading(false);
+
     if (effectiveQuestions.length === 0) {
       runActualScan(effectiveDesc());
     } else {
       setClarifyQuestions(effectiveQuestions);
+      setAppState("clarifying");
+      const scrollTimer = setTimeout(() => scrollToId("clarify"), 80);
+      timers.current.push(scrollTimer);
     }
   }
 
@@ -1068,7 +1073,7 @@ export default function ComplianceChecker() {
     {
       key: "coverage",
       title: t("Full regulatory coverage", "تغطية تنظيمية شاملة"),
-      body: t("SAMA, SDAIA data protection, AAOIFI Shariah and CMA standards. Over 9,000 indexed articles in one scan.", "ساما وحماية البيانات والمعايير الشرعية وهيئة السوق المالية. أكثر من 9,000 مادة مفهرسة في فحص واحد."),
+      body: t("SAMA, SDAIA data protection, AAOIFI Shariah and CMA standards. Over 9,500 indexed articles in one scan.", "ساما وحماية البيانات والمعايير الشرعية وهيئة السوق المالية. أكثر من 9,500 مادة مفهرسة في فحص واحد."),
       icon: "coverage"
     }
   ];
@@ -1288,7 +1293,7 @@ export default function ComplianceChecker() {
                       ) : (
                         <>
                           <label className="cx-attach-btn">
-                            <input accept=".pdf,.docx,.doc,.txt" onChange={onFileChange} type="file" />
+                            <input accept=".pdf,.docx,.doc,.txt" onChange={onFileChange} type="file" /> 
                             <UploadMini />
                             {t("Attach a document", "أرفق مستنداً")}
                             <span>{t("PDF, DOCX or TXT · 20 MB", "PDF أو DOCX أو TXT · 20 م.ب")}</span>
@@ -1383,11 +1388,20 @@ export default function ComplianceChecker() {
                   </div>
                 </div>
 
-                <button className={`cx-cta${canScan ? " is-enabled" : ""}`} disabled={!canScan} onClick={startScan} type="button">
-                  <SearchMini />
-                  {t("Run Compliance Scan", "ابدأ فحص الامتثال")}
+                <button className={`cx-cta${canScan ? " is-enabled" : ""}`} disabled={!canScan || clarifyLoading} onClick={startScan} type="button">
+                  {clarifyLoading ? (
+                    <>
+                      <span className="cx-spinner" style={{ width: 16, height: 16, borderColor: "rgba(255,255,255,0.35)", borderTopColor: "#fff" }} />
+                      {t("Analysing your description...", "جارٍ تحليل الوصف...")}
+                    </>
+                  ) : (
+                    <>
+                      <SearchMini />
+                      {t("Run Compliance Scan", "ابدأ فحص الامتثال")}
+                    </>
+                  )}
                 </button>
-                {!canScan && (
+                {!canScan && !clarifyLoading && (
                   <p className="cx-cta-hint">
                     {mode === "describe"
                       ? t("Describe your product or attach its document to enable the scan", "اكتب وصف منتجك أو أرفق مستنده لتفعيل الفحص")
@@ -1421,52 +1435,45 @@ export default function ComplianceChecker() {
                   )}
                 </div>
 
-                {clarifyLoading && !hasStarted ? (
-                  <div className="cx-clarify-loading">
-                    <span className="cx-spinner" style={{ width: 22, height: 22, borderColor: "rgba(0,107,104,0.25)", borderTopColor: "var(--teal-700)" }} />
-                    {t("Analysing your description...", "جارٍ تحليل الوصف...")}
-                  </div>
-                ) : (
-                  <div className={`cx-clarify-card${hasStarted ? " is-recap" : ""}`}>
-                    {clarifyQuestions.map((question, qi) => (
-                      <div className="cx-clarify-question" key={question.id}>
-                        <div className="cx-clarify-q-label">
-                          <span>{qi + 1}</span>
-                          {isAr ? question.text_ar : question.text_en}
-                        </div>
-                        <div className="cx-clarify-chips">
-                          {question.options.map(option => {
-                            const selected = (clarifyAnswers[question.id] ?? []).includes(option.value);
-                            return (
-                              <button
-                                className={`cx-clarify-chip${selected ? " is-active" : ""}`}
-                                disabled={hasStarted}
-                                key={option.value}
-                                onClick={() => toggleClarifyAnswer(question.id, option.value, question.allow_multiple)}
-                                type="button"
-                              >
-                                {selected && <CheckSmall />}
-                                {isAr ? option.label_ar : option.label_en}
-                              </button>
-                            );
-                          })}
-                        </div>
+                <div className={`cx-clarify-card${hasStarted ? " is-recap" : ""}`}>
+                  {clarifyQuestions.map((question, qi) => (
+                    <div className="cx-clarify-question" key={question.id}>
+                      <div className="cx-clarify-q-label">
+                        <span>{qi + 1}</span>
+                        {isAr ? question.text_ar : question.text_en}
                       </div>
-                    ))}
+                      <div className="cx-clarify-chips">
+                        {question.options.map(option => {
+                          const selected = (clarifyAnswers[question.id] ?? []).includes(option.value);
+                          return (
+                            <button
+                              className={`cx-clarify-chip${selected ? " is-active" : ""}`}
+                              disabled={hasStarted}
+                              key={option.value}
+                              onClick={() => toggleClarifyAnswer(question.id, option.value, question.allow_multiple)}
+                              type="button"
+                            >
+                              {selected && <CheckSmall />}
+                              {isAr ? option.label_ar : option.label_en}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
 
-                    {!hasStarted && (
-                      <div className="cx-clarify-actions">
-                        <button className="cx-cta is-enabled" onClick={submitClarifications} style={{ marginTop: 0 }} type="button">
-                          <SearchMini />
-                          {t("Continue to Compliance Scan", "متابعة فحص الامتثال")}
-                        </button>
-                        <button className="cx-clarify-skip" onClick={() => runActualScan(effectiveDesc())} type="button">
-                          {t("Skip, use my description as-is", "تخطَّ وابدأ الفحص بالوصف الحالي")}
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )}
+                  {!hasStarted && (
+                    <div className="cx-clarify-actions">
+                      <button className="cx-cta is-enabled" onClick={submitClarifications} style={{ marginTop: 0 }} type="button">
+                        <SearchMini />
+                        {t("Continue to Compliance Scan", "متابعة فحص الامتثال")}
+                      </button>
+                      <button className="cx-clarify-skip" onClick={() => runActualScan(effectiveDesc())} type="button">
+                        {t("Skip, use my description as-is", "تخطَّ وابدأ الفحص بالوصف الحالي")}
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
             </section>
           )}

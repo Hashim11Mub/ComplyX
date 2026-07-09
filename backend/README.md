@@ -5,7 +5,7 @@ FastAPI service powering the compliance analysis pipeline.
 ## Stack
 
 - **FastAPI**: REST API (LLM routes are sync `def` so `/health` stays responsive during long calls)
-- **Qdrant** (self-hosted, compose-managed): vector store for 9,108 regulatory chunks across 4 corpora
+- **Qdrant** (self-hosted, compose-managed): vector store for 9,506 regulatory chunks across 4 corpora
 - **`multilingual-e5-large`**: local bilingual embeddings (Arabic + English)
 - **Claude Sonnet 4.6**: compliance analysis, retone, and chat via forced `tool_use`
 - **Claude Haiku 4.5**: clarification questions and Arabic title translation

@@ -198,7 +198,7 @@ def _build_html(req: ReportPdfRequest) -> str:
         from ..retriever import count_indexed
         indexed = f"{count_indexed():,}"
     except Exception:
-        indexed = "9,000+"
+        indexed = "9,500+"
 
     # ── Roadmap rows ──
     actionable = [f for f in r.findings if f.status in ("gap", "needs_review")]

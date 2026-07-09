@@ -44,10 +44,12 @@ _CORPUS_RULES: list[tuple[str, str, str]] = [
     ("sama_rulebook", "sama", "SAMA"),
     ("personaldata", "pdpl", "SDAIA"),
     ("pdpl", "pdpl", "SDAIA"),
+    ("sdaia", "pdpl", "SDAIA"),
     ("shariaa", "shariah", "AAOIFI"),
     ("shariah", "shariah", "AAOIFI"),
     ("aaoifi", "shariah", "AAOIFI"),
     ("capitalmarket", "cma", "CMA"),
+    ("cma_", "cma", "CMA"),
 ]
 
 
