@@ -1291,20 +1291,20 @@ export default function ComplianceChecker() {
                           </button>
                         </div>
                       ) : (
-                        <>
+                        <div className="cx-attach-empty">
                           <label className="cx-attach-btn">
-                            <input accept=".pdf,.docx,.doc,.txt" onChange={onFileChange} type="file" /> 
-                            <UploadMini />
-                            {t("Attach a document", "أرفق مستنداً")}
+                            <input accept=".pdf,.docx,.doc,.txt" onChange={onFileChange} type="file" />
+                            <span className="cx-upload-icon"><UploadMini /></span>
+                            <strong>{t("Attach a document", "أرفق مستنداً")}</strong>
                             <span>{t("PDF, DOCX or TXT · 20 MB", "PDF أو DOCX أو TXT · 20 م.ب")}</span>
                           </label>
-                          <span className="cx-sample-file" style={{ marginTop: 0 }}>
+                          <span className="cx-sample-file">
                             {t("or", "أو")}{" "}
                             <button onClick={useSampleFile} type="button">
                               {t("use a sample document", "استخدم مستنداً تجريبياً")}
                             </button>
                           </span>
-                        </>
+                        </div>
                       )}
                     </div>
                     <div className="cx-presets">

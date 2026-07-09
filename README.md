@@ -62,10 +62,13 @@ All PDFs live in `backend/data/regulations/` (not in git; large, publicly availa
 ### One-shot boot
 
 ```powershell
-./start-demo.ps1
+./start-demo.ps1        # Windows
+```
+```bash
+./start-demo.sh          # macOS
 ```
 
-Boots Qdrant, the backend, and the frontend with health checks at every layer and fails loudly if one is down. For manual setup:
+Boots Qdrant, the backend, and the frontend with health checks at every layer and fails loudly if one is down. Each opens the backend and frontend in their own terminal window so their logs stay visible. Both scripts assume `.env`, backend/frontend dependencies, and an already-ingested Qdrant are in place — they boot services, they don't do first-time setup. For manual setup:
 
 ### 1. Environment
 
@@ -121,6 +124,8 @@ npm run dev
 `frontend/.env.local` sets `BACKEND_URL=http://127.0.0.1:8001` and `PORT=3002`. Open `http://localhost:3002`.
 
 > **Windows note:** Use `127.0.0.1` rather than `localhost` in `BACKEND_URL` to avoid IPv6 resolution issues. Ports 8001/3002 are used because 8000/3000 may be occupied on the dev machine.
+>
+> **macOS note:** `start-demo.sh` needs `python3` on `PATH` (already required for the backend) to parse the `/health` JSON, and uses `osascript`/Terminal.app to open the backend and frontend windows — both are standard on stock macOS, nothing extra to install. Run `chmod +x start-demo.sh` once if it isn't already executable.
 >
 > There is no mock fallback anywhere: if the backend is unreachable the UI shows a clear error instead of fake results.
 
@@ -253,7 +258,8 @@ ComplyX/
 │       ├── eval_run.py               # Evaluation harness (manual faithfulness metrics)
 │       └── eval_results.json         # Latest full-run results
 │
-├── start-demo.ps1              # One-shot boot with layer-by-layer health checks
+├── start-demo.ps1              # One-shot boot with layer-by-layer health checks (Windows)
+├── start-demo.sh                # Same, for macOS (opens Terminal.app windows via osascript)
 ├── .env.example
 └── CLAUDE.md                   # Cross-machine agent coordination
 ```

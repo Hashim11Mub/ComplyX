@@ -26,3 +26,8 @@ qdrant_storage/
 
 tmp/
 
+docs/
+
+# start-demo.sh's per-run launcher scripts (macOS)
+.demo-backend.sh
+.demo-frontend.sh
