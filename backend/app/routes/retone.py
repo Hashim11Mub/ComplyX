@@ -15,7 +15,7 @@ def retone(body: RetoneRequest) -> ComplianceResult:
     findings, executive_summary = retone_findings(
         body.findings, body.tone, body.lang, original_summary=body.executive_summary
     )
-    score, risk_level, gaps = score_findings(findings)
+    score, risk_level, gaps, breakdown = score_findings(findings)
     lang_key = body.lang if body.lang in ("ar", "en") else "ar"
     return ComplianceResult(
         product_type=body.product_type,
@@ -26,4 +26,5 @@ def retone(body: RetoneRequest) -> ComplianceResult:
         executive_summary=executive_summary,
         agent_steps=AGENT_STEPS_EN if lang_key == "en" else AGENT_STEPS_AR,
         disclaimer=DISCLAIMER_EN if lang_key == "en" else DISCLAIMER_AR,
+        score_breakdown=breakdown,
     )

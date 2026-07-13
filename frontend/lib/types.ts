@@ -49,6 +49,25 @@ export type Finding = {
   user_answer_ref?: string;
 };
 
+/** Mirrors backend GateInfo (models.py). A non-compensatory severity gate that
+ * capped the score; present only when it actually lowered the score. */
+export type GateInfo = {
+  kind: "high_gap" | "medium_gap";
+  cap: number;
+  findings: number[]; // indexes into ComplianceResult.findings
+};
+
+/** Mirrors backend ScoreBreakdown (models.py). penalties[] aligns with
+ * findings[] by index. */
+export type ScoreBreakdown = {
+  base: number;
+  penalties: number[];
+  subtotal: number;
+  gate: GateInfo | null;
+  final: number;
+  driver: "gaps" | "reviews" | "mixed" | "none";
+};
+
 export type ComplianceResult = {
   product_type: ProductType;
   compliance_score: number;
@@ -58,6 +77,7 @@ export type ComplianceResult = {
   executive_summary: string;
   agent_steps: string[];
   disclaimer: string;
+  score_breakdown: ScoreBreakdown;
 };
 
 export type ProductIcon = "wallet" | "bnpl" | "gateway" | "robo" | "api" | "crypto";

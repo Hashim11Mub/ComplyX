@@ -78,6 +78,13 @@ _T = {
         "note_text": "تستند بعض النتائج إلى إجابات قدمها المستخدم في مقابلة توضيح المنتج، وكل نتيجة من هذا النوع تقتبس الإجابة التي بُنيت عليها.",
         "path_label": "مسار الامتثال",
         "projection": "معالجة الثغرات المفتوحة ({n}) ترفع نسبة الامتثال إلى {p}%. بنود المراجعة لا تتغير بهذا الإسقاط، والحساب ناتج عن معادلة التقييم الثابتة نفسها.",
+        "gate_label": "سقف الدرجة",
+        "gate_high": "سقف الدرجة {cap}: فجوة مؤكدة عالية الخطورة ({refs}) تضع المنتج في النطاق مرتفع المخاطر بغض النظر عن نقاط القوة الأخرى.",
+        "gate_medium": "سقف الدرجة {cap}: فجوة مؤكدة متوسطة الخطورة ({refs}) تستبعد النطاق منخفض المخاطر.",
+        "driver_gaps": "المؤثر الرئيسي على الدرجة: فجوات مؤكدة",
+        "driver_reviews": "المؤثر الرئيسي على الدرجة: نقاط بحاجة لمراجعة، وليست فجوات مؤكدة",
+        "driver_mixed": "الدرجة متأثرة بالتساوي بين الفجوات المؤكدة والنقاط التي تحتاج لمراجعة",
+        "impact": "الأثر على الدرجة",
         "roadmap": "خارطة المعالجة",
         "roadmap_note": "الثغرات والبنود التي تتطلب مراجعة، مرتبة حسب الحالة والخطورة. عالجها بهذا الترتيب.",
         "col_pri": "الأولوية", "col_req": "المتطلب", "col_action": "الإجراء المطلوب",
@@ -95,7 +102,7 @@ _T = {
         "appendix": "الملحق: أسئلة المقابلة التوضيحية وإجاباتها",
         "appendix_note": "تستند بعض النتائج أعلاه إلى هذه الإجابات كما هو موضح عند كل نتيجة.",
         "scope": "النطاق والمنهجية",
-        "scope_body": "فُحص وصف المنتج وإجابات المقابلة مقابل {n} مادة تنظيمية مفهرسة (إصدار القاعدة {v}) تغطي ساما وحماية البيانات الشخصية والمعايير الشرعية وهيئة السوق المالية، عبر بحث دلالي ثنائي اللغة. كل نتيجة تقتبس نص المادة المسترجعة حرفياً، ونسبة الامتثال تُحسب بمعادلة عقوبات ثابتة من حالة كل نتيجة ومستوى خطورتها. نهاية التقرير.",
+        "scope_body": "فُحص وصف المنتج وإجابات المقابلة مقابل {n} مادة تنظيمية مفهرسة (إصدار القاعدة {v}) تغطي ساما وحماية البيانات الشخصية والمعايير الشرعية وهيئة السوق المالية، عبر بحث دلالي ثنائي اللغة. كل نتيجة تقتبس نص المادة المسترجعة حرفياً، ونسبة الامتثال تُحسب بمعادلة عقوبات ثابتة من حالة كل نتيجة ومستوى خطورتها، مع قواعد سقف حسب الخطورة: وجود فجوة مؤكدة عالية أو متوسطة الخطورة يحدد سقف الدرجة، فلا يعوض الخلل الجوهري بنقاط القوة الأخرى. النسبة مؤشر جاهزية تنظيمية وأداة فرز لترتيب أولويات المعالجة والمراجعة، وليست حكماً قانونياً. نهاية التقرير.",
         "running_score": "النسبة {s} / 100 · مخاطر {r}",
     },
     "en": {
@@ -114,6 +121,13 @@ _T = {
         "note_text": "Some findings are based on answers given during the product interview. Each such finding cites the answer it relies on.",
         "path_label": "PATH TO COMPLIANT",
         "projection": "Resolving the {n} open gap(s) raises the compliance score to {p}%. Items under review are unchanged by this projection; the number comes from the same fixed scoring formula.",
+        "gate_label": "SCORE CAP",
+        "gate_high": "Score capped at {cap}: a high-severity confirmed gap ({refs}) places the product in the high-risk band regardless of other strengths.",
+        "gate_medium": "Score capped at {cap}: a confirmed moderate gap ({refs}) rules out the low-risk band.",
+        "driver_gaps": "Main score driver: confirmed gaps",
+        "driver_reviews": "Main score driver: items needing review, not confirmed gaps",
+        "driver_mixed": "Score driven equally by confirmed gaps and items needing review",
+        "impact": "Score impact",
         "roadmap": "Remediation roadmap",
         "roadmap_note": "Gap and needs-review findings, ordered by status and severity. Resolve in this order.",
         "col_pri": "Pri.", "col_req": "Requirement", "col_action": "Required action",
@@ -131,7 +145,7 @@ _T = {
         "appendix": "Appendix: Clarification Interview Questions and Answers",
         "appendix_note": "Some findings above are based on these answers, as marked on each finding.",
         "scope": "Scope and method",
-        "scope_body": "This assessment checked the product description and interview answers against {n} indexed regulatory articles (corpus version {v}) covering SAMA, SDAIA personal data protection, AAOIFI Shariah standards and CMA, using bilingual semantic retrieval. Every finding quotes the retrieved article text verbatim, and the compliance score is computed by a fixed penalty formula over finding statuses and risk levels. End of report.",
+        "scope_body": "This assessment checked the product description and interview answers against {n} indexed regulatory articles (corpus version {v}) covering SAMA, SDAIA personal data protection, AAOIFI Shariah standards and CMA, using bilingual semantic retrieval. Every finding quotes the retrieved article text verbatim, and the compliance score is computed by a fixed penalty formula over finding statuses and risk levels, with severity gates: any confirmed high or medium severity gap caps the score, so a critical breach is never offset by strengths elsewhere. The score is a regulatory readiness index and a triage signal for prioritizing remediation and review, not a legal determination. End of report.",
         "running_score": "Score {s} / 100 · {r} risk",
     },
 }
@@ -222,6 +236,9 @@ def _build_html(req: ReportPdfRequest) -> str:
         or f'<tr><td colspan="5" class="td empty">{t["none"]}</td></tr>'
 
     # ── Finding cards ──
+    penalties = r.score_breakdown.penalties
+    gate = r.score_breakdown.gate
+
     def _card(i: int, f) -> str:
         status_color = _STATUS_COLOR[f.status]
         risk_chip_color = _RISK_COLOR.get(f.risk, "#a15c09")
@@ -230,6 +247,8 @@ def _build_html(req: ReportPdfRequest) -> str:
             if f.user_answer_ref else ""
         )
         verbatim_note = f'<span class="verbatim-note">{t["verbatim_note"]}</span>' if t["verbatim_note"] else ""
+        pen = penalties[i - 1] if i - 1 < len(penalties) else 0
+        pen_html = f'<span class="pen-label">{t["impact"]}: <b dir="ltr">-{pen}</b></span>' if pen > 0 else ""
         return f"""<article class="finding" style="border-inline-start-color:{status_color}">
           <div class="f-top">
             <div class="f-id-col">
@@ -240,6 +259,7 @@ def _build_html(req: ReportPdfRequest) -> str:
             <div class="f-status-col">
               <span class="status-pill" style="background:{status_color}">{t['status'][f.status]}</span>
               <span class="risk-label" style="color:{risk_chip_color}">{t['risk_chip'].get(f.risk, f.risk)}</span>
+              {pen_html}
             </div>
           </div>
           <div class="verbatim" dir="ltr">
@@ -271,6 +291,19 @@ def _build_html(req: ReportPdfRequest) -> str:
                 f'<div class="gold-band"><span class="gold-label">{t["path_label"]}</span>'
                 f'<span class="gold-text">{t["projection"].format(n=r.gaps_count, p=projected)}</span></div>'
             )
+
+    gate_band_html = ""
+    if gate:
+        refs = ", ".join(f"F-{i + 1:02d}" for i in gate.findings)
+        gate_key = "gate_high" if gate.kind == "high_gap" else "gate_medium"
+        gate_cls = "is-high" if gate.kind == "high_gap" else "is-medium"
+        gate_band_html = (
+            f'<div class="gate-band {gate_cls}"><span class="gate-label">{t["gate_label"]}</span>'
+            f'<span class="gate-text">{t[gate_key].format(cap=gate.cap, refs=refs)}</span></div>'
+        )
+
+    driver_key = {"gaps": "driver_gaps", "reviews": "driver_reviews", "mixed": "driver_mixed"}.get(r.score_breakdown.driver)
+    driver_html = f'<p class="score-driver">{t[driver_key]}</p>' if driver_key else ""
 
     note_html = ""
     if has_attribution:
@@ -341,6 +374,15 @@ def _build_html(req: ReportPdfRequest) -> str:
   .gold-band {{ background: #f3ead4; border-radius: 4px; display: flex; gap: 10px; align-items: baseline; padding: 11px 17px; }}
   .gold-label {{ color: #8a6d1f; flex-shrink: 0; font-size: 10px; font-weight: 800; letter-spacing: 0.06em; }}
   .gold-text {{ color: #8a6d1f; font-size: 11px; line-height: 1.6; }}
+  .gate-band {{ border-radius: 4px; display: flex; gap: 10px; align-items: baseline; margin-bottom: 12px; padding: 11px 17px; }}
+  .gate-band.is-high {{ background: #fbeae8; border: 1px solid #eccbc7; }}
+  .gate-band.is-high .gate-label, .gate-band.is-high .gate-text {{ color: #8a1f15; }}
+  .gate-band.is-medium {{ background: #f9efe0; border: 1px solid #ead7b8; }}
+  .gate-band.is-medium .gate-label, .gate-band.is-medium .gate-text {{ color: #6f4106; }}
+  .gate-label {{ flex-shrink: 0; font-size: 10px; font-weight: 800; letter-spacing: 0.06em; }}
+  .gate-text {{ font-size: 11px; line-height: 1.6; }}
+  .score-driver {{ color: #65777d; font-size: 10.5px; font-weight: 700; margin: 4px 0 0; }}
+  .pen-label {{ color: #65777d; font-size: 9px; font-weight: 700; }}
   .cover-break {{ page-break-after: always; }}
 
   main {{ padding: 26px 56px 30px; }}
@@ -422,6 +464,7 @@ def _build_html(req: ReportPdfRequest) -> str:
           <span class="score-label">{t['score_label']}</span>
         </div>
         <p class="score-caption">{t['score_caption']}</p>
+        {driver_html}
         <div class="stats">
           <div class="stat" style="border-top-color:#b42318"><span class="stat-num" style="color:#b42318">{r.gaps_count}</span><span class="stat-label">{t['gaps']}</span></div>
           <div class="stat" style="border-top-color:#a15c09"><span class="stat-num" style="color:#a15c09">{review_count}</span><span class="stat-label">{t['reviews']}</span></div>
@@ -431,6 +474,7 @@ def _build_html(req: ReportPdfRequest) -> str:
       </div>
     </div>
     <div class="cover-body">
+      {gate_band_html}
       {projection_html}
       <div class="sect-head"><h2>{t['summary']}</h2><div class="gold-rule"></div></div>
       <p class="summary-p" dir="auto">{_e(r.executive_summary)}</p>

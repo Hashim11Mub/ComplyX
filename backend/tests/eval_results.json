@@ -1,5 +1,5 @@
 {
-  "indexed_chunks": 9506,
+  "indexed_chunks": 9505,
   "products_tested": 20,
   "products_passed": 20,
   "products_failed": 0,
@@ -7,130 +7,130 @@
   "faithfulness": {
     "source_faithfulness": 1.0,
     "quote_faithfulness": 1.0,
-    "grounded_findings": 155,
-    "grounded_quotes": 155,
-    "total_findings": 155
+    "grounded_findings": 157,
+    "grounded_quotes": 157,
+    "total_findings": 157
   },
   "rows": [
     {
       "id": "p01",
       "product_type": "payment_services",
       "lang": "ar",
-      "compliance_score": 32,
+      "compliance_score": 5,
       "risk_level": "high",
-      "gaps_count": 2,
+      "gaps_count": 4,
       "findings_count": 8,
-      "retrieve_ms": 8607.3,
-      "llm_ms": 64080.5,
-      "total_ms": 72687.7
+      "retrieve_ms": 8813.1,
+      "llm_ms": 65279.7,
+      "total_ms": 74092.8
     },
     {
       "id": "p02",
       "product_type": "payment_services",
       "lang": "en",
-      "compliance_score": 58,
-      "risk_level": "medium",
-      "gaps_count": 1,
-      "findings_count": 7,
-      "retrieve_ms": 613.0,
-      "llm_ms": 38456.8,
-      "total_ms": 39069.8
+      "compliance_score": 22,
+      "risk_level": "high",
+      "gaps_count": 3,
+      "findings_count": 8,
+      "retrieve_ms": 439.8,
+      "llm_ms": 43402.0,
+      "total_ms": 43841.7
     },
     {
       "id": "p03",
       "product_type": "payment_services",
       "lang": "ar",
-      "compliance_score": 24,
+      "compliance_score": 10,
       "risk_level": "high",
       "gaps_count": 3,
       "findings_count": 8,
-      "retrieve_ms": 550.0,
-      "llm_ms": 57469.1,
-      "total_ms": 58019.1
+      "retrieve_ms": 393.7,
+      "llm_ms": 60471.7,
+      "total_ms": 60865.4
     },
     {
       "id": "p04",
       "product_type": "payment_services",
       "lang": "ar",
-      "compliance_score": 35,
+      "compliance_score": 27,
       "risk_level": "high",
       "gaps_count": 2,
       "findings_count": 8,
-      "retrieve_ms": 575.3,
-      "llm_ms": 68498.5,
-      "total_ms": 69073.8
+      "retrieve_ms": 407.2,
+      "llm_ms": 56076.5,
+      "total_ms": 56483.7
     },
     {
       "id": "p05",
       "product_type": "consumer_finance",
       "lang": "en",
-      "compliance_score": 56,
+      "compliance_score": 30,
       "risk_level": "high",
-      "gaps_count": 0,
+      "gaps_count": 2,
       "findings_count": 8,
-      "retrieve_ms": 552.4,
-      "llm_ms": 46084.9,
-      "total_ms": 46637.3
+      "retrieve_ms": 370.3,
+      "llm_ms": 39837.3,
+      "total_ms": 40207.6
     },
     {
       "id": "p06",
       "product_type": "consumer_finance",
       "lang": "ar",
-      "compliance_score": 63,
+      "compliance_score": 70,
       "risk_level": "medium",
       "gaps_count": 0,
       "findings_count": 8,
-      "retrieve_ms": 604.5,
-      "llm_ms": 65403.7,
-      "total_ms": 66008.2
+      "retrieve_ms": 383.9,
+      "llm_ms": 64039.5,
+      "total_ms": 64423.4
     },
     {
       "id": "p07",
       "product_type": "consumer_finance",
       "lang": "ar",
-      "compliance_score": 58,
-      "risk_level": "medium",
+      "compliance_score": 44,
+      "risk_level": "high",
       "gaps_count": 1,
       "findings_count": 8,
-      "retrieve_ms": 513.2,
-      "llm_ms": 61618.8,
-      "total_ms": 62132.1
+      "retrieve_ms": 345.0,
+      "llm_ms": 63579.3,
+      "total_ms": 63924.4
     },
     {
       "id": "p08",
       "product_type": "consumer_finance",
       "lang": "en",
-      "compliance_score": 24,
+      "compliance_score": 5,
       "risk_level": "high",
       "gaps_count": 4,
       "findings_count": 8,
-      "retrieve_ms": 620.8,
-      "llm_ms": 38336.2,
-      "total_ms": 38957.0
+      "retrieve_ms": 395.4,
+      "llm_ms": 40051.8,
+      "total_ms": 40447.2
     },
     {
       "id": "p09",
       "product_type": "open_banking",
       "lang": "ar",
-      "compliance_score": 35,
+      "compliance_score": 42,
       "risk_level": "high",
-      "gaps_count": 2,
+      "gaps_count": 1,
       "findings_count": 8,
-      "retrieve_ms": 520.1,
-      "llm_ms": 71191.7,
-      "total_ms": 71711.8
+      "retrieve_ms": 379.1,
+      "llm_ms": 65653.7,
+      "total_ms": 66032.7
     },
     {
       "id": "p10",
       "product_type": "open_banking",
       "lang": "en",
-      "compliance_score": 58,
-      "risk_level": "medium",
+      "compliance_score": 57,
+      "risk_level": "high",
       "gaps_count": 0,
       "findings_count": 8,
-      "retrieve_ms": 485.9,
-      "llm_ms": 43191.0,
-      "total_ms": 43677.0
+      "retrieve_ms": 402.8,
+      "llm_ms": 42876.4,
+      "total_ms": 43279.1
     },
     {
       "id": "p11",
@@ -138,119 +138,119 @@
       "lang": "ar",
       "compliance_score": 5,
       "risk_level": "high",
-      "gaps_count": 7,
+      "gaps_count": 6,
       "findings_count": 8,
-      "retrieve_ms": 534.6,
-      "llm_ms": 62546.7,
-      "total_ms": 63081.3
+      "retrieve_ms": 343.9,
+      "llm_ms": 62865.5,
+      "total_ms": 63209.4
     },
     {
       "id": "p12",
       "product_type": "general",
       "lang": "ar",
-      "compliance_score": 37,
+      "compliance_score": 22,
       "risk_level": "high",
       "gaps_count": 3,
       "findings_count": 8,
-      "retrieve_ms": 507.3,
-      "llm_ms": 61403.5,
-      "total_ms": 61910.8
+      "retrieve_ms": 320.3,
+      "llm_ms": 67908.3,
+      "total_ms": 68228.6
     },
     {
       "id": "p13",
       "product_type": "general",
       "lang": "en",
-      "compliance_score": 48,
+      "compliance_score": 32,
       "risk_level": "high",
-      "gaps_count": 2,
+      "gaps_count": 3,
       "findings_count": 8,
-      "retrieve_ms": 593.5,
-      "llm_ms": 39256.6,
-      "total_ms": 39850.1
+      "retrieve_ms": 304.2,
+      "llm_ms": 41252.5,
+      "total_ms": 41556.7
     },
     {
       "id": "p14",
       "product_type": "general",
       "lang": "ar",
-      "compliance_score": 58,
-      "risk_level": "medium",
-      "gaps_count": 1,
-      "findings_count": 5,
-      "retrieve_ms": 691.9,
-      "llm_ms": 38892.4,
-      "total_ms": 39584.3
+      "compliance_score": 50,
+      "risk_level": "high",
+      "gaps_count": 2,
+      "findings_count": 6,
+      "retrieve_ms": 345.6,
+      "llm_ms": 52270.6,
+      "total_ms": 52616.1
     },
     {
       "id": "p15",
       "product_type": "general",
       "lang": "en",
-      "compliance_score": 48,
+      "compliance_score": 37,
       "risk_level": "high",
       "gaps_count": 1,
       "findings_count": 8,
-      "retrieve_ms": 450.2,
-      "llm_ms": 41527.9,
-      "total_ms": 41978.2
+      "retrieve_ms": 365.8,
+      "llm_ms": 43089.6,
+      "total_ms": 43455.3
     },
     {
       "id": "p16",
       "product_type": "general",
       "lang": "ar",
-      "compliance_score": 27,
+      "compliance_score": 17,
       "risk_level": "high",
       "gaps_count": 3,
       "findings_count": 8,
-      "retrieve_ms": 373.3,
-      "llm_ms": 56008.4,
-      "total_ms": 56381.7
+      "retrieve_ms": 239.2,
+      "llm_ms": 62128.9,
+      "total_ms": 62368.1
     },
     {
       "id": "p17",
       "product_type": "consumer_finance",
       "lang": "ar",
-      "compliance_score": 27,
+      "compliance_score": 25,
       "risk_level": "high",
       "gaps_count": 3,
       "findings_count": 8,
-      "retrieve_ms": 391.4,
-      "llm_ms": 61558.1,
-      "total_ms": 61949.5
+      "retrieve_ms": 253.8,
+      "llm_ms": 63107.5,
+      "total_ms": 63361.3
     },
     {
       "id": "p18",
       "product_type": "payment_services",
       "lang": "en",
-      "compliance_score": 60,
-      "risk_level": "medium",
+      "compliance_score": 54,
+      "risk_level": "high",
       "gaps_count": 1,
       "findings_count": 7,
-      "retrieve_ms": 327.6,
-      "llm_ms": 40137.3,
-      "total_ms": 40464.9
+      "retrieve_ms": 245.3,
+      "llm_ms": 37972.6,
+      "total_ms": 38218.0
     },
     {
       "id": "p19",
       "product_type": "open_banking",
       "lang": "en",
-      "compliance_score": 48,
+      "compliance_score": 20,
       "risk_level": "high",
-      "gaps_count": 1,
+      "gaps_count": 3,
       "findings_count": 8,
-      "retrieve_ms": 313.3,
-      "llm_ms": 37330.4,
-      "total_ms": 37643.8
+      "retrieve_ms": 270.1,
+      "llm_ms": 42632.5,
+      "total_ms": 42902.6
     },
     {
       "id": "p20",
       "product_type": "general",
       "lang": "ar",
-      "compliance_score": 29,
+      "compliance_score": 10,
       "risk_level": "high",
-      "gaps_count": 2,
+      "gaps_count": 3,
       "findings_count": 8,
-      "retrieve_ms": 339.7,
-      "llm_ms": 61573.2,
-      "total_ms": 61912.9
+      "retrieve_ms": 249.2,
+      "llm_ms": 66520.8,
+      "total_ms": 66770.0
     }
   ]
 }

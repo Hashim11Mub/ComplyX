@@ -11,7 +11,7 @@ Describe a financial product and ComplyX checks it against KSA regulations, retu
 1. **Describe your product**: type a description, attach a PDF/DOCX/TXT document, or dictate by voice, in Arabic or English. Scope the scan to any combination of regulators (SAMA, PDPL/SDAIA, AAOIFI Shariah, CMA).
 2. **Clarification interview (step 1.5)**: the system asks up to 4 targeted multiple-choice questions about compliance-critical details missing from the description (license status, target users, data handling, and more). Answers are folded into the scan, stay visible alongside the report, and findings that depend on them are explicitly attributed ("Based on your interview answer: ...").
 3. **Live analysis**: semantic search retrieves the relevant regulatory articles (shown on screen within about a second, with Arabic titles in Arabic sessions), then Claude writes findings that stream into the UI as they are produced.
-4. **Scored report**: a deterministic 0-100 compliance score (computed by a fixed penalty formula, never by the LLM), risk level, per-finding analysis and recommendation, and the exact regulation text each finding is based on (quote faithfulness 1.0 by construction). Reports re-render instantly across language and detail level (simple / executive / technical) without the findings or score ever changing.
+4. **Scored report**: a deterministic 0-100 compliance score (computed by a fixed penalty formula with severity gates, never by the LLM), risk level, per-finding analysis and recommendation, and the exact regulation text each finding is based on (quote faithfulness 1.0 by construction). The report shows the scoring arithmetic: each finding's point impact, the dominant score driver, and a notice when a severity gate capped the score (a confirmed high-severity gap always places the product in the high-risk band; strengths elsewhere never offset a critical breach). Reports re-render instantly across language and detail level (simple / executive / technical) without the findings or score ever changing.
 5. **Session-aware assistant**: a built-in chat consultant that knows your product description, uploaded document, interview answers, and generated report, and answers follow-up questions grounded in the retrieved regulations.
 6. **Export**: branded bilingual PDF (remediation roadmap plus full findings) or plain-text report.
 
@@ -275,18 +275,20 @@ ComplyX/
 | LLM | Claude Sonnet 4.6 analysis, Haiku 4.5 clarify/translate, `temperature=0` | Quality where it matters, speed where it does not |
 | Structured output | `tool_use` (forced) | More reliable than parsing JSON from text |
 | Citations | Server-side quote injection (LLM returns chunk indexes only) | Quote and source faithfulness 1.0 by construction |
-| Scoring | Fixed penalty formula in `scoring.py` | Reproducible, explainable, immune to LLM drift |
+| Scoring | Gated penalty formula in `scoring.py` (methodology v3) | Reproducible and explainable: 1:2:4 severity weights, needs-review at 50% expected value, and non-compensatory gates so a confirmed critical gap can never be offset into a "ready" rating. Full rationale in the module docstring |
 | Tone/language switches | `/api/retone` rewrite of existing findings | Score and findings cannot change between renders |
 | Frontend | Next.js 15, CSS logical properties | Full RTL/LTR without JS direction logic |
 
 ---
 
-## Measured Quality (20-product eval, 2026-07-13, full corpus)
+## Measured Quality (20-product eval, 2026-07-13, scoring methodology v3, full corpus)
 
 | Metric | Result |
 |--------|--------|
 | Valid structured output | 20/20 |
-| Source faithfulness | 1.000 (155/155 findings cite retrieved sources) |
-| Quote faithfulness | 1.000 (155/155 verbatim quotes found in retrieved chunks) |
-| Scan latency | avg 53.6s, P95 71.7s (plus streaming: first articles ~1s, first finding ~15s) |
+| Source faithfulness | 1.000 (157/157 findings cite retrieved sources) |
+| Quote faithfulness | 1.000 (157/157 verbatim quotes found in retrieved chunks) |
+| Scan latency | avg 54.8s, P95 68.2s (plus streaming: first articles ~1s, first finding ~15s) |
 | Indexed regulatory chunks | 9,505 across 4 corpora (current live corpus, 17 PDFs) |
+
+Scores use gated deterministic scoring (v3): a confirmed high-severity gap caps the score at 57 (high risk), a confirmed medium gap caps it at 81, so a critical breach is never offset by strengths elsewhere. The synthetic eval set is intentionally gap-heavy and lands mostly in the high-risk band under these rules; the report explains every score with per-finding point impacts and a gate notice.

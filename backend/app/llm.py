@@ -354,7 +354,7 @@ def _assemble_result(
         if finding is not None:
             findings.append(finding)
 
-    score, risk_level, gaps = score_findings(findings)
+    score, risk_level, gaps, breakdown = score_findings(findings)
     lang_key = lang if lang in ("ar", "en") else "ar"
     return ComplianceResult(
         product_type=product_type,
@@ -365,6 +365,7 @@ def _assemble_result(
         executive_summary=data.get("executive_summary", ""),
         agent_steps=AGENT_STEPS_EN if lang_key == "en" else AGENT_STEPS_AR,
         disclaimer=DISCLAIMER_EN if lang_key == "en" else DISCLAIMER_AR,
+        score_breakdown=breakdown,
     )
 
 

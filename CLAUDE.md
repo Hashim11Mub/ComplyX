@@ -101,7 +101,7 @@ Located in `frontend/`. Next.js 15, Arabic RTL. New in v2:
 Located in `backend/app/`.
 - `config.py` — pydantic-settings, reads `.env` via absolute path (critical — see HANDOFF)
 - `models.py` — `CheckRequest` (+`corpora: list[str]|None`), `Requirement` (+`regulator`), `ComplianceResult`, clarify models
-- `scoring.py` — **deterministic score** (I-5): 100 − penalties per finding (gap: −16/−10/−6 by risk; needs_review: −8/−5/−3), clamp [5,100]; risk thresholds 82/58. The LLM never emits a score.
+- `scoring.py` — **deterministic gated score** (methodology v3, 2026-07-13): 100 − penalties per finding (gap: −20/−10/−5 by risk; needs_review: −10/−5/−3), then severity gates (any high gap → cap 57; else any medium gap → cap 81), clamp [5,100]; risk thresholds 82/58. Returns a `ScoreBreakdown` (per-finding penalties, binding gate, driver) that the UI/PDF render. The LLM never emits a score. Full methodology rationale in the module docstring; do not hand-tune weights.
 - `embeddings.py` — multilingual-e5-large, `query:` / `passage:` prefixes
 - `retriever.py` — Qdrant `query_points()` + **corpus filters**; multi-corpus requests are balanced per corpus then merged by score; `count_by_corpus()` feeds /health
 - `ingest.py` — PDF → chunks → Qdrant; tags every chunk with `corpus`/`regulator` by filename (`corpus_for_filename`); long articles become windowed continuation chunks (no more 1,500-char truncation — Banking rulebook went 118 → 3,201 chunks)
@@ -128,6 +128,14 @@ Run `pip install python-multipart python-docx` after pulling on any machine.
 - Notable: p08 score=28/high, p11 score=18/high — appropriately low for non-compliant products; p01–p07 cluster around 62/medium
 
 **Qdrant state (2026-07-13):** **9,505 chunks from 17 PDFs** — sama 5,432 · shariah 3,334 · cma 572 · pdpl 167 (corpus 2026-07, fixed windowing chunker). Local to each machine — run ingest per machine (see setup below); expect ~2–4h of CPU embedding for the full corpus.
+
+**2026-07-13 update 2: Scoring methodology v3 (gated, principled) SHIPPED.** User-approved redesign replacing the ad hoc v2 weights. Full rationale lives in `scoring.py`'s docstring (band definitions, principles, the "1 high gap + 7 compliant = 84/low" hole it fixes); the machine-local `agent/STRATEGY-2026-07-13.md` section 8 has the design discussion. What changed:
+- `scoring.py`: penalties now gap 20/10/5, needs_review 10/5/3 (1:2:4 severity doubling; nr = 50% expected value); **severity gates**: any high gap caps score at 57 (high band), else any medium gap caps at 81; gate reported only when it actually lowers the score. `score_findings()` now returns a 4th element (`ScoreBreakdown`); `projected_score()` lifts gates.
+- `models.py` + `types.ts` (contract change, both together): new `GateInfo` + `ScoreBreakdown`; `ComplianceResult.score_breakdown` REQUIRED. Both `ComplianceResult` constructors (llm.py `_assemble_result`, retone route) pass it.
+- UI (`ComplianceChecker.tsx` + `globals.css`): driver caption under the risk line (`.cx-score-driver`), gate notice box (`.cx-gate-note`, red/amber variants), per-finding "Score impact: -N points" line in expanded findings (`.cx-score-impact`, marks gate-setting findings).
+- PDF (`report_pdf.py`): gate band on cover (`.gate-band`), driver caption under score dial, per-finding penalty in cards, scope-and-method now states the methodology (readiness index, gates, "not a legal determination"). Both languages, no em dashes.
+- Verified: scenario table in code (10 profiles), live `/api/retone` (1 high gap + 1 compliant → subtotal 80, gate → 57/high), EN PDF 8/8 text checks, AR PDF single-word checks (bidi extraction artifact on multi-word checks is known/expected), tsc + py_compile clean. NOT yet browser-verified visually (needs a scan producing a binding gate).
+- **Changing any weight/gate/threshold requires updating the scoring.py docstring rationale + report/README methodology text + re-running the eval. Do not hand-tune.**
 
 **2026-07-13: CMA_Law.pdf traceability fix.** Audit found `CMA_Law.pdf` was falling back to the sliding-window chunker (`article_number: "chunk-N"`, no real citation) because it spells article numbers as words ("Article One", "Article Thirty-Nine") rather than digits — the English article regex only matched `Article \d+`. Added `_EN_ARTICLE_WORD` in `ingest.py` (cardinal number-words 1-99, longest-first alternation) as a new strategy between digit-form and numbered-paragraph fallback. Re-ingested only this file (deleted its 102 old `chunk-N` points from Qdrant, re-ran `ingest_pdf()` scoped to the single PDF): now 101 chunks with real `Article One`/`Article Thirty-Five`/etc. citations. Net corpus count: 9,506 → 9,505 (cma 573 → 572). Quote/source faithfulness were never affected (chunk text itself was always a real substring); this was purely a citation-label fix. Treated as a priority fix, not deferred, per user direction: traceability cannot be compromised in a compliance product.
 
@@ -318,20 +326,22 @@ Corpus tags are inferred from filenames in `ingest.py::corpus_for_filename` — 
 
 ## Quality Targets
 
-**Measured (20-product eval, 2026-07-13, v2 pipeline, limit=12, current 9,505-chunk / 17-PDF corpus):**
+**Measured (20-product eval, 2026-07-13 evening, scoring methodology v3, limit=12, current 9,505-chunk / 17-PDF corpus):**
 - 20/20 valid structured output (0 failures)
-- **Source faithfulness: 1.000** (155/155) — by construction (backend injects sources from retrieved chunks)
-- **Quote faithfulness: 1.000** (155/155; was **0.432** before A-1) — by construction; this is the before/after
+- **Source faithfulness: 1.000** (157/157) — by construction (backend injects sources from retrieved chunks)
+- **Quote faithfulness: 1.000** (157/157; was **0.432** before A-1) — by construction; this is the before/after
   story for the "data analysis" judging axis
-- Latency: **avg 53.6s, P95 71.7s** (2026-07-04 baseline on the 9,108-chunk corpus: 56.7s / 70.1s; pre-A-1
+- Latency: **avg 54.8s, P95 68.2s** (2026-07-04 baseline on the 9,108-chunk corpus: 56.7s / 70.1s; pre-A-1
   baseline: 82.6s / 105.8s) — plus streaming: retrieved articles on screen ~1s, first finding ~15s (perceived latency)
-- Scores: deterministic, spread 5–63 with no clustering. 14/20 products land "high risk" — the penalty
-  weights in `scoring.py` are strict (e.g. p05 scored 56/high with 0 gaps, purely from needs_review items).
-  **Do NOT hand-tune `_PENALTY` ad hoc:** the user has mandated a principled, documented scoring methodology
-  (defensible to industry professionals) as part of an upcoming work batch — treat that as a high-effort
-  research+design task, not a numeric tweak. Until then the weights stay as they are.
-- Eval-run note: this run overlapped the CMA_Law.pdf re-chunking; verified immaterial — 0 of the 20 products
-  retrieve any CMA_Law.pdf chunk at limit=12 under the current corpus.
+- Scores under v3 (gated): spread 5–70. **19/20 land high risk, 1/20 medium (p06, 70, zero gaps), 0 low** — the
+  synthetic set is intentionally gap-heavy, and under the gates any product with a confirmed medium+ gap cannot
+  reach the low band (that is the point of the methodology). Notable edge: p10 = 57/high with ZERO gaps, purely
+  needs_review burden, 1 point under the medium threshold — defensible ("unresolved critical questions = not
+  ready until clarified") and the report's driver caption explains it, but know it exists before a demo.
+- **Demo guidance:** to show a green-ish score on stage, use a well-specified product and answer the interview
+  (resolving needs_review items is worth real points); the gate notice + projection line make low scores
+  narratable ("here is exactly why, here is the path back"). Do NOT soften weights for demo cosmetics — the
+  methodology docstring in `scoring.py` is the contract (user decision 2026-07-13).
 
 **Eval harness notes:**
 - Run from `backend/`: `$env:PYTHONUTF8="1"; python -m tests.eval_run` (UTF-8 flag required on Windows consoles)

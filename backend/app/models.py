@@ -30,6 +30,25 @@ class Finding(BaseModel):
     user_answer_ref: str = ""
 
 
+class GateInfo(BaseModel):
+    """A non-compensatory severity gate that capped the score (methodology v3).
+    Present in ScoreBreakdown only when it actually lowered the score."""
+    kind: Literal["high_gap", "medium_gap"]
+    cap: int
+    findings: list[int]  # indexes into ComplianceResult.findings that triggered it
+
+
+class ScoreBreakdown(BaseModel):
+    """Full scoring arithmetic so the report can show exactly why a product
+    scored what it scored. penalties[] is aligned with findings[] by index."""
+    base: int  # always 100
+    penalties: list[int]
+    subtotal: int  # base minus penalties, clamped, before gates
+    gate: GateInfo | None = None
+    final: int
+    driver: Literal["gaps", "reviews", "mixed", "none"]
+
+
 class ComplianceResult(BaseModel):
     product_type: ProductType
     compliance_score: int
@@ -39,6 +58,7 @@ class ComplianceResult(BaseModel):
     executive_summary: str
     agent_steps: list[str]
     disclaimer: str
+    score_breakdown: ScoreBreakdown
 
 
 class CheckRequest(BaseModel):

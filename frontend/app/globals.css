@@ -1804,6 +1804,31 @@ strong.cx-slot-shimmer {
   font-weight: 800;
 }
 
+/* Scoring methodology v3: dominant-driver caption under the risk line */
+.cx-score-driver {
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+/* Scoring methodology v3: severity-gate notice (score was capped) */
+.cx-gate-note {
+  background: rgba(180, 35, 24, 0.07);
+  border: 1px solid rgba(180, 35, 24, 0.25);
+  border-radius: 9px;
+  color: #8a1f15;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.6;
+  padding: 9px 12px;
+}
+
+.cx-gate-note.is-medium {
+  background: rgba(161, 92, 9, 0.07);
+  border-color: rgba(161, 92, 9, 0.28);
+  color: #6f4106;
+}
+
 .cx-report-meta {
   display: flex;
   flex-wrap: wrap;
@@ -2995,6 +3020,17 @@ html[dir="rtl"] .cx-chat-drawer {
 
 .cx-finding-body .cx-user-answer-note strong {
   font-weight: 800;
+}
+
+/* Scoring methodology v3: per-finding penalty line (resets the gold-label
+   cascade from .cx-finding-body div div) */
+.cx-finding-body .cx-score-impact {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0;
+  margin-bottom: 12px;
+  text-transform: none;
 }
 
 /* ── Clarify recap (step 1.5 stays visible after the scan) ─────────────── */

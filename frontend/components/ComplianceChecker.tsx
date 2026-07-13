@@ -1022,9 +1022,20 @@ export default function ComplianceChecker() {
     const analysisLabel = isAr ? "التحليل" : "Analysis";
     const sourceLabel = isAr ? "المصدر" : "Source";
     const articleTextLabel = isAr ? "نص المادة" : "Article Text";
+    const exportGate = complianceResult.score_breakdown?.gate ?? null;
+    const gateLine = exportGate
+      ? exportGate.kind === "high_gap"
+        ? isAr
+          ? `سقف الدرجة ${exportGate.cap}: فجوة مؤكدة عالية الخطورة (${exportGate.findings.map(findingRef).join(", ")})`
+          : `Score capped at ${exportGate.cap}: high-severity confirmed gap (${exportGate.findings.map(findingRef).join(", ")})`
+        : isAr
+          ? `سقف الدرجة ${exportGate.cap}: فجوة مؤكدة متوسطة الخطورة (${exportGate.findings.map(findingRef).join(", ")})`
+          : `Score capped at ${exportGate.cap}: confirmed moderate gap (${exportGate.findings.map(findingRef).join(", ")})`
+      : "";
     const lines = [
       isAr ? "ComplyX - تقرير فحص الامتثال" : "ComplyX - Compliance Report",
       `Ref: ${refNumber}   Score: ${complianceResult.compliance_score}/100   Risk: ${complianceResult.risk_level.toUpperCase()}`,
+      ...(gateLine ? [gateLine] : []),
       `${isAr ? "مستوى الشرح" : "Detail level"}: ${complexity}`,
       "",
       complianceResult.executive_summary,
@@ -1097,6 +1108,20 @@ export default function ComplianceChecker() {
   const riskValueLabel = risk === "high" ? t("High", "مرتفع") : risk === "medium" ? t("Medium", "متوسط") : t("Low", "منخفض");
   const gapCount = complianceResult?.gaps_count ?? 0;
   const reviewCount = complianceResult?.findings.filter((f) => f.status === "needs_review").length ?? 0;
+  const breakdown = complianceResult?.score_breakdown ?? null;
+  const scoreGate = breakdown?.gate ?? null;
+  const findingRef = (i: number) => `F-${String(i + 1).padStart(2, "0")}`;
+  const gateRefs = scoreGate ? scoreGate.findings.map(findingRef).join(", ") : "";
+  // Arabic counted-noun form for penalty points (values are 3/5/10/20).
+  const arPts = (p: number) => (p >= 11 ? "نقطة" : "نقاط");
+  const driverLine =
+    !breakdown || breakdown.driver === "none"
+      ? ""
+      : breakdown.driver === "gaps"
+        ? t("Main score driver: confirmed gaps", "المؤثر الرئيسي على الدرجة: فجوات مؤكدة")
+        : breakdown.driver === "reviews"
+          ? t("Main score driver: items needing review, not confirmed gaps", "المؤثر الرئيسي على الدرجة: نقاط بحاجة لمراجعة، وليست فجوات مؤكدة")
+          : t("Score driven equally by confirmed gaps and items needing review", "الدرجة متأثرة بالتساوي بين الفجوات المؤكدة والنقاط التي تحتاج لمراجعة");
   const rc = Math.min(revealedCount, 6);
   const nextSlot = appState === "scanning" && rc < 6 ? rc : -1;
   // Slot sources, in priority order: final result findings → findings
@@ -1667,6 +1692,20 @@ export default function ComplianceChecker() {
                         {t("Risk", "المخاطر")}: {riskValueLabel}
                       </strong>
                     </div>
+                    {driverLine && <div className="cx-score-driver">{driverLine}</div>}
+                    {scoreGate && (
+                      <div className={`cx-gate-note${scoreGate.kind === "medium_gap" ? " is-medium" : ""}`} dir={dirAttr}>
+                        {scoreGate.kind === "high_gap"
+                          ? t(
+                              `Score capped at ${scoreGate.cap}: a high-severity confirmed gap (${gateRefs}) places the product in the high-risk band regardless of other strengths.`,
+                              `سقف الدرجة ${scoreGate.cap}: فجوة مؤكدة عالية الخطورة (${gateRefs}) تضع المنتج في النطاق مرتفع المخاطر بغض النظر عن نقاط القوة الأخرى.`
+                            )
+                          : t(
+                              `Score capped at ${scoreGate.cap}: a confirmed moderate gap (${gateRefs}) rules out the low-risk band.`,
+                              `سقف الدرجة ${scoreGate.cap}: فجوة مؤكدة متوسطة الخطورة (${gateRefs}) تستبعد النطاق منخفض المخاطر.`
+                            )}
+                      </div>
+                    )}
                     <div className="cx-report-meta">
                       <div>
                         <span>{t("Session reference", "المرجع الجلسي")}</span>
@@ -1790,6 +1829,15 @@ export default function ComplianceChecker() {
                                     {t("Based on your interview answer:", "بناءً على إجابتك في المقابلة:")}{" "}
                                     <strong>{finding.user_answer_ref}</strong>
                                   </span>
+                                </div>
+                              )}
+                              {(breakdown?.penalties[idx] ?? 0) > 0 && (
+                                <div className="cx-score-impact">
+                                  {t(
+                                    `Score impact: -${breakdown!.penalties[idx]} points`,
+                                    `الأثر على الدرجة: خصم ${breakdown!.penalties[idx]} ${arPts(breakdown!.penalties[idx])}`
+                                  )}
+                                  {(scoreGate?.findings.includes(idx) ?? false) && t(" · sets the score cap", " · يحدد سقف الدرجة")}
                                 </div>
                               )}
                               <div>{t("Analysis", "التحليل")}</div>
