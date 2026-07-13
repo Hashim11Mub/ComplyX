@@ -110,6 +110,30 @@ _EN_ARTICLE = re.compile(
     r"^((?:Article|Rule|Regulation|Clause|Section)\s+\d+(?:\.\d+)*[^\n]{0,80})",
     re.MULTILINE | re.IGNORECASE,
 )
+
+# Some English translations (e.g. CMA Capital Market Law) spell article numbers
+# out as words instead of digits: "Article One", "Article Thirty-Nine". Build
+# the alternation from cardinal number words 1-99, longest-first so "Thirty-Nine"
+# matches before the bare "Thirty" prefix would.
+_EN_NUM_ONES = ["One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine"]
+_EN_NUM_TEENS = ["Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen",
+                 "Sixteen", "Seventeen", "Eighteen", "Nineteen"]
+_EN_NUM_TENS = ["Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"]
+
+
+def _en_number_words() -> list[str]:
+    words = list(_EN_NUM_ONES) + list(_EN_NUM_TEENS) + list(_EN_NUM_TENS)
+    words += [f"{tens}-{ones}" for tens in _EN_NUM_TENS for ones in _EN_NUM_ONES]
+    return sorted(words, key=len, reverse=True)
+
+
+_EN_ARTICLE_WORD = re.compile(
+    r"^((?:Article|Rule|Regulation|Clause|Section)\s+(?:"
+    + "|".join(_en_number_words())
+    + r")[^\n]{0,80})",
+    re.MULTILINE | re.IGNORECASE,
+)
+
 _EN_NUMBERED = re.compile(
     r"^(\d+\.\s+[A-Z][^\n]{10,80})",
     re.MULTILINE,
@@ -241,8 +265,9 @@ def chunk_into_articles(
     Strategy (in order):
     1. Arabic article markers
     2. English "Article N" markers
-    3. English "N." numbered paragraph markers
-    4. Sliding window (last resort)
+    3. English "Article One" / "Article Thirty-Nine" (spelled-out numbers)
+    4. English "N." numbered paragraph markers
+    5. Sliding window (last resort)
     """
     # Join pages with double newline so paragraph boundaries are preserved
     full_text = "\n\n".join(p["text"] for p in pages)
@@ -252,17 +277,22 @@ def chunk_into_articles(
     if chunks:
         return chunks
 
-    # 2 — English Article/Rule/Section
+    # 2 — English Article/Rule/Section (digit form)
     chunks = _split_on_pattern(full_text, _EN_ARTICLE, regulation_name, pdf_name)
     if chunks:
         return chunks
 
-    # 3 — English numbered paragraphs ("1. Capital requirements...")
+    # 3 — English Article/Rule/Section (spelled-out number form)
+    chunks = _split_on_pattern(full_text, _EN_ARTICLE_WORD, regulation_name, pdf_name)
+    if chunks:
+        return chunks
+
+    # 4 — English numbered paragraphs ("1. Capital requirements...")
     chunks = _split_on_pattern(full_text, _EN_NUMBERED, regulation_name, pdf_name)
     if chunks:
         return chunks
 
-    # 4 — Sliding window fallback
+    # 5 — Sliding window fallback
     return _sliding_window(pages, regulation_name, pdf_name)
 
 

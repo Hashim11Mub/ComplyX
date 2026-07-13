@@ -26,7 +26,7 @@ Browser (Next.js 15, Arabic RTL)
   ├─ /api/clarify, /api/retone, /api/chat        │
   ├─ /api/extract-text, /api/report-pdf          ├─ Qdrant (self-hosted, docker compose)
   │                                              │   └─ multilingual-e5-large embeddings
-  │                                              │   └─ 9,506 regulatory chunks, 4 corpora
+  │                                              │   └─ 9,505 regulatory chunks, 4 corpora
   │                                              │
   │                                              ├─ Claude Sonnet 4.6 (analysis, retone, chat)
   │                                              └─ Claude Haiku 4.5 (clarify, title translation)
@@ -40,13 +40,13 @@ Browser (Next.js 15, Arabic RTL)
 
 ## Regulation Sources
 
-All PDFs live in `backend/data/regulations/` (not in git; large, publicly available files). 17 PDFs, 9,506 indexed chunks (corpus 2026-07).
+All PDFs live in `backend/data/regulations/` (not in git; large, publicly available files). 17 PDFs, 9,505 indexed chunks (corpus 2026-07).
 
 | Corpus | Regulator | PDFs | Chunks |
 |--------|-----------|------|--------|
 | `sama` | SAMA (Saudi Central Bank), https://rulebook.sama.gov.sa | 8 rulebooks | 5,432 |
 | `shariah` | AAOIFI Shariah Standards | 1 | 3,334 |
-| `cma` | Capital Market Authority | 4 (institutions regulation, Capital Market Law, Investment Funds Regulations, FinTech Lab permit instructions) | 573 |
+| `cma` | Capital Market Authority | 4 (institutions regulation, Capital Market Law, Investment Funds Regulations, FinTech Lab permit instructions) | 572 |
 | `pdpl` | SDAIA Personal Data Protection | 4 (law, 2 implementing regs, NDMO data management standard) | 167 |
 
 ---
@@ -101,7 +101,7 @@ pip install -r requirements.txt
 python -m app.ingest --dir data/regulations
 ```
 
-First run downloads `multilingual-e5-large` (~1.1 GB). Embedding the full 17-PDF corpus takes 2-4 hours on CPU. Expected final count: about 9,506 chunks.
+First run downloads `multilingual-e5-large` (~1.1 GB). Embedding the full 17-PDF corpus takes 2-4 hours on CPU. Expected final count: about 9,505 chunks.
 
 ### 4. Start backend (port 8001)
 
@@ -111,7 +111,7 @@ $env:PYTHONUTF8 = "1"
 uvicorn app.main:app --port 8001 --host 0.0.0.0
 ```
 
-Verify: `http://127.0.0.1:8001/health` returns `{"status":"ok","indexed_articles":9506,"ready":true,"corpus_version":"2026-07","corpora":{...}}`
+Verify: `http://127.0.0.1:8001/health` returns `{"status":"ok","indexed_articles":9505,"ready":true,"corpus_version":"2026-07","corpora":{...}}`
 
 ### 5. Start frontend (port 3002)
 
@@ -281,12 +281,12 @@ ComplyX/
 
 ---
 
-## Measured Quality (20-product eval, full corpus)
+## Measured Quality (20-product eval, 2026-07-13, full corpus)
 
 | Metric | Result |
 |--------|--------|
 | Valid structured output | 20/20 |
-| Source faithfulness | 1.000 (159/159) |
-| Quote faithfulness | 1.000 (159/159) |
-| Scan latency | avg 56.7s, P95 70.1s (plus streaming: first articles ~1s, first finding ~15s) |
-| Indexed regulatory chunks | 9,108 across 4 corpora (eval corpus snapshot; live corpus is now 9,506 after a 2026-07-09 CMA/PDPL expansion — re-run the eval before quoting quality numbers against the larger corpus) |
+| Source faithfulness | 1.000 (155/155 findings cite retrieved sources) |
+| Quote faithfulness | 1.000 (155/155 verbatim quotes found in retrieved chunks) |
+| Scan latency | avg 53.6s, P95 71.7s (plus streaming: first articles ~1s, first finding ~15s) |
+| Indexed regulatory chunks | 9,505 across 4 corpora (current live corpus, 17 PDFs) |

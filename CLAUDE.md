@@ -35,7 +35,7 @@ projects). If these are free on your machine you can still use them; if not, por
 
 ## Current State (as of 2026-07-09 — update this section + commit when a phase changes)
 
-**2026-07-09 update 6 (macOS launcher script):** added `start-demo.sh` at repo root — a macOS port of `start-demo.ps1` for a teammate on a Mac. Same 4 stages (Docker/Qdrant, backend, frontend, ready) and same fail-loud philosophy (checks `.env` exists, checks `/health.ready`, tells you to run ingest if Qdrant is empty); opens the backend and frontend each in their own Terminal.app window via `osascript` (mirrors the Windows script's separate PowerShell windows) instead of backgrounding them silently. Depends only on things already required by the project (Docker Desktop, `python3` for parsing `/health` JSON, Terminal.app — all stock on macOS). Writes two small per-run launcher files (`.demo-backend.sh`/`.demo-frontend.sh`) at repo root so `do script` has a single quoted path to invoke instead of fighting nested-quote escaping; both are gitignored. Does NOT do first-time setup (pip/npm install, PDF ingest) — same scope as the Windows script, just boots what's already configured. README's Quick Start and Project Structure sections updated with the macOS command and a macOS-specific note.
+**2026-07-09 update 6 (macOS launcher script):** added `start-demo.sh` at repo root — a macOS port of `start-demo.ps1` for a teammate on a Mac. Same 4 stages (Docker/Qdrant, backend, frontend, ready) and same fail-loud philosophy (checks `.env` exists, checks `/health.ready`, tells you to run ingest if Qdrant is empty); opens the backend and frontend each in their own Terminal.app window via `osascript` (mirrors the Windows script's separate PowerShell windows) instead of backgrounding them silently. Depends only on things already required by the project (Docker Desktop, `python3` for parsing `/health` JSON, Terminal.app — all stock on macOS). Writes two small per-run launcher files (`.demo-backend.sh`/`.demo-frontend.sh`) at repo root so `do script` has a single quoted path to invoke instead of fighting nested-quote escaping; both are gitignored. Does NOT do first-time setup (pip/npm install, PDF ingest) — same scope as the Windows script, just boots what's already configured. README's Quick Start and Project Structure sections updated with the macOS command and a macOS-specific note. **2026-07-13: confirmed working end-to-end on an actual Mac (user's teammate) — no longer syntax-checked-only.**
 
 **2026-07-09 update 5 (Step 1/2/3 visual polish, user-directed):**
 - **Attach-document dropzone** (`.cx-attach-btn`/`.cx-attach-empty` in `ComplianceChecker.tsx` + `globals.css`): now spans the full card width as a proper dashed dropzone (icon in a circle, bold title, caption), with the "use a sample document" button centered below it instead of squeezed inline next to a small pill button. This absorbed and replaced the old dead `.cx-upload-zone` CSS (pre-input-merge leftover, unused) rather than duplicating similar styles.
@@ -127,7 +127,9 @@ Run `pip install python-multipart python-docx` after pulling on any machine.
 - Source faithfulness: not computed in stored results (the `_retrieved_sources` private fields were stripped before saving)
 - Notable: p08 score=28/high, p11 score=18/high — appropriately low for non-compliant products; p01–p07 cluster around 62/medium
 
-**Qdrant state (2026-07-09):** **9,506 chunks from 17 PDFs** — sama 5,432 · shariah 3,334 · cma 573 · pdpl 167 (corpus 2026-07, fixed windowing chunker). Local to each machine — run ingest per machine (see setup below); expect ~2–4h of CPU embedding for the full corpus.
+**Qdrant state (2026-07-13):** **9,505 chunks from 17 PDFs** — sama 5,432 · shariah 3,334 · cma 572 · pdpl 167 (corpus 2026-07, fixed windowing chunker). Local to each machine — run ingest per machine (see setup below); expect ~2–4h of CPU embedding for the full corpus.
+
+**2026-07-13: CMA_Law.pdf traceability fix.** Audit found `CMA_Law.pdf` was falling back to the sliding-window chunker (`article_number: "chunk-N"`, no real citation) because it spells article numbers as words ("Article One", "Article Thirty-Nine") rather than digits — the English article regex only matched `Article \d+`. Added `_EN_ARTICLE_WORD` in `ingest.py` (cardinal number-words 1-99, longest-first alternation) as a new strategy between digit-form and numbered-paragraph fallback. Re-ingested only this file (deleted its 102 old `chunk-N` points from Qdrant, re-ran `ingest_pdf()` scoped to the single PDF): now 101 chunks with real `Article One`/`Article Thirty-Five`/etc. citations. Net corpus count: 9,506 → 9,505 (cma 573 → 572). Quote/source faithfulness were never affected (chunk text itself was always a real substring); this was purely a citation-label fix. Treated as a priority fix, not deferred, per user direction: traceability cannot be compromised in a compliance product.
 
 **2026-07-09: Corpus expansion (CMA depth + PDPL standard).** Added 4 PDFs the user sourced and vetted with Claude for scope fit (SDAIA AI Ethics Principles and 3 ZATCA tax/e-invoicing docs were deliberately excluded — different regulatory domain than SAMA/CMA/PDPL/Shariah, would dilute the Financial Regulations framing):
 - `CMA_Law.pdf` (60pp → 102 chunks, sliding-window strategy — no article-pattern match) — the base Capital Market Law; previously only its implementing regulation was indexed
@@ -166,7 +168,7 @@ docker compose up -d qdrant
 pip install -r requirements.txt
 python -m app.ingest --dir data/regulations
 ```
-First run downloads the multilingual-e5-large model (~1.1GB). Embedding the full 17-PDF corpus takes ~2–4h on CPU. Watch for `Total in Qdrant: 9506` (±small drift from window-dedup) at the end.
+First run downloads the multilingual-e5-large model (~1.1GB). Embedding the full 17-PDF corpus takes ~2–4h on CPU. Watch for `Total in Qdrant: 9505` (±small drift from window-dedup) at the end.
 
 **Step 5 — Start backend** (from `backend/`; port 8001 — see Ports section above):
 ```powershell
@@ -302,7 +304,7 @@ All PDFs live in `backend/data/regulations/` (not in git — large files). After
 **AAOIFI (Shariah Standards)** — 1 PDF indexed (3,334 chunks, corpus tag `shariah`):
 - `Shariaa-Standards-ENG.pdf`
 
-**CMA (Capital Market Authority)** — 4 PDFs indexed (573 chunks, corpus tag `cma`):
+**CMA (Capital Market Authority)** — 4 PDFs indexed (572 chunks, corpus tag `cma`):
 - `CapitalMarketInstitutionsRegulations.pdf`
 - `CMA_Law.pdf` (the base Capital Market Law, added 2026-07-09)
 - `CMA_IFRs_Regulations.pdf` (Investment Funds Regulations, added 2026-07-09)
@@ -316,16 +318,20 @@ Corpus tags are inferred from filenames in `ingest.py::corpus_for_filename` — 
 
 ## Quality Targets
 
-**Measured (20-product eval, 2026-07-04, v2 pipeline, limit=12, full 9,108-chunk corpus — corpus has since grown to 9,506 chunks on 2026-07-09; re-run before quoting these numbers against the larger corpus):**
+**Measured (20-product eval, 2026-07-13, v2 pipeline, limit=12, current 9,505-chunk / 17-PDF corpus):**
 - 20/20 valid structured output (0 failures)
-- **Source faithfulness: 1.000** (159/159) — by construction (backend injects sources from retrieved chunks)
-- **Quote faithfulness: 1.000** (159/159; was **0.432** before A-1) — by construction; this is the before/after
+- **Source faithfulness: 1.000** (155/155) — by construction (backend injects sources from retrieved chunks)
+- **Quote faithfulness: 1.000** (155/155; was **0.432** before A-1) — by construction; this is the before/after
   story for the "data analysis" judging axis
-- Latency: **avg 56.7s, P95 70.1s** (was 82.6s / 105.8s) — plus streaming: retrieved articles on screen ~1s,
-  first finding ~15s (perceived latency)
-- Scores: deterministic, spread 5–66 with no clustering (was 12/20 at exactly 62). NOTE: the current penalty
-  weights in `scoring.py` are strict — needs_review-heavy products land in "high risk" often. If calibration
-  feels harsh in demos, tune `_PENALTY` in ONE place (e.g. needs_review 8/5/3 → 5/3/2) — no prompt changes needed.
+- Latency: **avg 53.6s, P95 71.7s** (2026-07-04 baseline on the 9,108-chunk corpus: 56.7s / 70.1s; pre-A-1
+  baseline: 82.6s / 105.8s) — plus streaming: retrieved articles on screen ~1s, first finding ~15s (perceived latency)
+- Scores: deterministic, spread 5–63 with no clustering. 14/20 products land "high risk" — the penalty
+  weights in `scoring.py` are strict (e.g. p05 scored 56/high with 0 gaps, purely from needs_review items).
+  **Do NOT hand-tune `_PENALTY` ad hoc:** the user has mandated a principled, documented scoring methodology
+  (defensible to industry professionals) as part of an upcoming work batch — treat that as a high-effort
+  research+design task, not a numeric tweak. Until then the weights stay as they are.
+- Eval-run note: this run overlapped the CMA_Law.pdf re-chunking; verified immaterial — 0 of the 20 products
+  retrieve any CMA_Law.pdf chunk at limit=12 under the current corpus.
 
 **Eval harness notes:**
 - Run from `backend/`: `$env:PYTHONUTF8="1"; python -m tests.eval_run` (UTF-8 flag required on Windows consoles)
