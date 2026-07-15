@@ -27,6 +27,8 @@ qdrant_storage/
 tmp/
 
 docs/
+!frontend/app/docs/
+!frontend/app/docs/**
 
 # start-demo.sh's per-run launcher scripts (macOS)
 .demo-backend.sh

@@ -327,6 +327,27 @@ button:disabled {
   gap: 14px;
 }
 
+.cx-doc-link {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--teal-700);
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 800;
+  height: 32px;
+  padding: 0 13px;
+  text-decoration: none;
+  transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease;
+}
+
+.cx-doc-link:hover {
+  background: var(--teal-50);
+  border-color: #9ac8c4;
+  color: var(--teal-800);
+}
+
 .cx-status-pill {
   background: #e5eeee;
   border-radius: 20px;
@@ -3218,4 +3239,317 @@ html[dir="rtl"] .cx-chat-drawer {
   background: #e8f5f3;
   border-color: var(--teal-700);
   color: var(--teal-700);
+}
+
+.cx-doc-page {
+  background:
+    linear-gradient(rgba(183, 154, 87, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(7, 55, 67, 0.045) 1px, transparent 1px),
+    #f8fbfb;
+  background-size: 38px 38px, 38px 38px, 100% 100%;
+  color: var(--ink);
+  min-height: 100vh;
+}
+
+.cx-doc-topbar {
+  align-items: center;
+  background: rgba(248, 251, 251, 0.92);
+  backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  height: 60px;
+  justify-content: space-between;
+  padding: 0 26px;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.cx-doc-back {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--teal-700);
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 800;
+  gap: 8px;
+  height: 34px;
+  padding: 0 14px;
+  text-decoration: none;
+}
+
+.cx-doc-hero,
+.cx-doc-section {
+  margin: 0 auto;
+  max-width: 1120px;
+  width: calc(100% - 48px);
+}
+
+.cx-doc-hero {
+  align-items: center;
+  display: grid;
+  gap: 28px;
+  grid-template-columns: minmax(0, 1fr) 310px;
+  padding: 58px 0 34px;
+}
+
+.cx-doc-hero-copy {
+  min-width: 0;
+}
+
+.cx-doc-kicker {
+  color: var(--teal-700);
+  display: block;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  margin-bottom: 10px;
+}
+
+.cx-doc-hero h1 {
+  color: #0c2a2f;
+  font-size: 38px;
+  font-weight: 800;
+  line-height: 1.45;
+  margin: 0 0 16px;
+  max-width: 760px;
+}
+
+.cx-doc-hero p,
+.cx-doc-final p {
+  color: var(--muted);
+  font-size: 15.5px;
+  line-height: 1.85;
+  margin: 0;
+}
+
+.cx-doc-score {
+  background: linear-gradient(150deg, var(--teal-900), var(--teal-700));
+  border: 1px solid rgba(183, 154, 87, 0.45);
+  border-radius: 8px;
+  box-shadow: 0 24px 42px -26px rgba(7, 55, 67, 0.48);
+  color: #ffffff;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 24px;
+}
+
+.cx-doc-score svg {
+  color: var(--gold);
+}
+
+.cx-doc-score strong {
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.cx-doc-score span {
+  color: #cbe4e1;
+  font-size: 13.5px;
+  line-height: 1.7;
+}
+
+.cx-doc-section {
+  padding: 18px 0;
+}
+
+.cx-doc-two-col,
+.cx-doc-example-grid {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.cx-doc-panel,
+.cx-doc-example,
+.cx-doc-template,
+.cx-doc-final {
+  background: #ffffff;
+  border: 1px solid #dde8e8;
+  border-radius: 8px;
+  box-shadow: 0 24px 54px -42px rgba(7, 55, 67, 0.35);
+}
+
+.cx-doc-panel,
+.cx-doc-example {
+  padding: 22px;
+}
+
+.cx-doc-section-title {
+  align-items: center;
+  color: #0c2a2f;
+  display: flex;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.cx-doc-section-title svg {
+  color: var(--teal-700);
+  flex-shrink: 0;
+}
+
+.cx-doc-section-title h2,
+.cx-doc-final h2 {
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 1.35;
+  margin: 0;
+}
+
+.cx-doc-check-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.cx-doc-check {
+  align-items: flex-start;
+  background: #f8fbfb;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: flex;
+  gap: 9px;
+  padding: 11px;
+}
+
+.cx-doc-check svg,
+.cx-doc-example.is-strong svg {
+  color: var(--ok);
+  flex-shrink: 0;
+  margin-top: 3px;
+}
+
+.cx-doc-check span,
+.cx-doc-steps li,
+.cx-doc-example p,
+.cx-doc-template p {
+  color: var(--ink);
+  font-size: 13.5px;
+  line-height: 1.75;
+  margin: 0;
+}
+
+.cx-doc-steps {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding-inline-start: 22px;
+}
+
+.cx-doc-example-head {
+  align-items: center;
+  display: flex;
+  gap: 9px;
+  margin-bottom: 12px;
+}
+
+.cx-doc-example-head strong {
+  color: #0c2a2f;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.cx-doc-example.is-weak svg {
+  color: var(--danger);
+}
+
+.cx-doc-example p {
+  background: #f8fbfb;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-top: 10px;
+  padding: 12px;
+}
+
+.cx-doc-example.is-weak p {
+  color: var(--muted);
+}
+
+.cx-doc-example.is-strong p {
+  background: #f4fbf9;
+  border-color: #cfe5df;
+}
+
+.cx-doc-template-section {
+  padding-bottom: 22px;
+}
+
+.cx-doc-template {
+  counter-reset: template-line;
+  display: grid;
+  gap: 8px;
+  padding: 20px;
+}
+
+.cx-doc-template p {
+  align-items: flex-start;
+  background: #fbfdfd;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: flex;
+  gap: 10px;
+  padding: 11px 13px;
+}
+
+.cx-doc-template p::before {
+  color: var(--teal-700);
+  content: counter(template-line, decimal-leading-zero);
+  counter-increment: template-line;
+  direction: ltr;
+  flex-shrink: 0;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.cx-doc-final {
+  align-items: flex-start;
+  display: flex;
+  gap: 14px;
+  margin-bottom: 52px;
+  padding: 22px;
+}
+
+.cx-doc-final svg {
+  color: var(--gold-deep);
+  flex-shrink: 0;
+  margin-top: 4px;
+}
+
+.cx-doc-final h2 {
+  margin-bottom: 7px;
+}
+
+@media (max-width: 760px) {
+  .cx-doc-link,
+  .cx-status-pill {
+    display: none;
+  }
+
+  .cx-doc-topbar {
+    padding: 0 16px;
+  }
+
+  .cx-doc-hero,
+  .cx-doc-section {
+    width: calc(100% - 32px);
+  }
+
+  .cx-doc-hero {
+    grid-template-columns: 1fr;
+    padding-top: 34px;
+  }
+
+  .cx-doc-hero h1 {
+    font-size: 28px;
+  }
+
+  .cx-doc-two-col,
+  .cx-doc-example-grid,
+  .cx-doc-check-grid {
+    grid-template-columns: 1fr;
+  }
 }

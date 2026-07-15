@@ -1,6 +1,7 @@
 "use client";
 
 import { ChangeEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { askConsultant, checkCompliance, downloadPdfReport, fetchHealth, getProductQuestions, retoneReport, streamCheck } from "@/lib/api";
 import type {
   ChatSessionContext,
@@ -1189,6 +1190,9 @@ export default function ComplianceChecker() {
           </div>
         </div>
         <div className="cx-topbar-actions">
+          <Link className="cx-doc-link" href="/docs">
+            {t("Prompt guide", "دليل الوصف")}
+          </Link>
           <div className={`cx-status-pill${health && !health.ready ? " is-off" : ""}`}>
             <span />
             {health === null
