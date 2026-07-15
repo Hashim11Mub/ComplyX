@@ -9,7 +9,7 @@ FastAPI service powering the compliance analysis pipeline.
 - **`multilingual-e5-large`**: local bilingual embeddings (Arabic + English)
 - **Claude Sonnet 4.6**: compliance analysis, retone, and chat via forced `tool_use`
 - **Claude Haiku 4.5**: clarification questions and Arabic title translation
-- **LangSmith**: optional tracing (set `LANGCHAIN_API_KEY` in `.env`)
+- **LangSmith**: optional tracing (set `LANGCHAIN_API_KEY` in `.env`). The key is validated once at startup: an invalid or expired key prints a clear rejection message and disables tracing for the run instead of failing silently per-trace.
 
 ## Endpoints
 

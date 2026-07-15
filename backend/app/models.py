@@ -58,7 +58,12 @@ class ComplianceResult(BaseModel):
     executive_summary: str
     agent_steps: list[str]
     disclaimer: str
-    score_breakdown: ScoreBreakdown
+    # Always set by the backend (both constructors call score_findings), but
+    # optional at the model level because ComplianceResult also travels
+    # client->server inside ReportPdfRequest, where a pre-v3 session may post
+    # a result without it (and the PDF recomputes it from findings anyway,
+    # never trusting the posted copy).
+    score_breakdown: ScoreBreakdown | None = None
 
 
 class CheckRequest(BaseModel):

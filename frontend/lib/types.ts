@@ -2,8 +2,6 @@ export type Lang = "ar" | "en";
 
 export type AppState = "input" | "clarifying" | "scanning" | "results";
 
-export type InputMode = "describe" | "upload" | "voice";
-
 export type ProductType =
   | "open_banking"
   | "aml"
@@ -77,7 +75,9 @@ export type ComplianceResult = {
   executive_summary: string;
   agent_steps: string[];
   disclaimer: string;
-  score_breakdown: ScoreBreakdown;
+  /** Always present on fresh backend responses; optional because results can
+   * predate v3 (stale session) and the PDF endpoint recomputes it anyway. */
+  score_breakdown?: ScoreBreakdown | null;
 };
 
 export type ProductIcon = "wallet" | "bnpl" | "gateway" | "robo" | "api" | "crypto";

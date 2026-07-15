@@ -8,6 +8,7 @@ import type {
   ClarifyQuestion,
   Corpus,
   Finding,
+  GateInfo,
   HealthInfo,
   ProductType as BackendProductType,
   RetrievedArticle
@@ -373,7 +374,9 @@ export default function ComplianceChecker() {
   const [retrievedTitlesAr, setRetrievedTitlesAr] = useState<string[]>([]);
   const [health, setHealth] = useState<HealthInfo | null>(null);
   const [clarifiedCount, setClarifiedCount] = useState(0);
-  const [scanDate, setScanDate] = useState("");
+  // Stored as a timestamp and formatted at render so a language switch
+  // re-localizes the date (a captured string kept the old locale's digits).
+  const [scanTime, setScanTime] = useState<Date | null>(null);
   const [pdfBusy, setPdfBusy] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -850,7 +853,7 @@ export default function ComplianceChecker() {
       .then(() => fetchVariant(lang, otherComplexities[1]))
       .catch(() => { /* prefetch is best-effort; on-demand fetch covers misses */ });
     setRevealedCount(6);
-    setScanDate(new Date().toLocaleDateString(isAr ? "ar-SA" : "en-GB", { day: "numeric", month: "short", year: "numeric" }));
+    setScanTime(new Date());
     fetchHealth().then(setHealth);
     // Hold on the scan view for 2.5s so the real articles are readable, then transition
     const transitionTimer = setTimeout(() => {
@@ -1023,25 +1026,17 @@ export default function ComplianceChecker() {
     const sourceLabel = isAr ? "المصدر" : "Source";
     const articleTextLabel = isAr ? "نص المادة" : "Article Text";
     const exportGate = complianceResult.score_breakdown?.gate ?? null;
-    const gateLine = exportGate
-      ? exportGate.kind === "high_gap"
-        ? isAr
-          ? `سقف الدرجة ${exportGate.cap}: فجوة مؤكدة عالية الخطورة (${exportGate.findings.map(findingRef).join(", ")})`
-          : `Score capped at ${exportGate.cap}: high-severity confirmed gap (${exportGate.findings.map(findingRef).join(", ")})`
-        : isAr
-          ? `سقف الدرجة ${exportGate.cap}: فجوة مؤكدة متوسطة الخطورة (${exportGate.findings.map(findingRef).join(", ")})`
-          : `Score capped at ${exportGate.cap}: confirmed moderate gap (${exportGate.findings.map(findingRef).join(", ")})`
-      : "";
     const lines = [
       isAr ? "ComplyX - تقرير فحص الامتثال" : "ComplyX - Compliance Report",
       `Ref: ${refNumber}   Score: ${complianceResult.compliance_score}/100   Risk: ${complianceResult.risk_level.toUpperCase()}`,
-      ...(gateLine ? [gateLine] : []),
+      ...(exportGate ? [gateMessage(exportGate)] : []),
+      ...(floorLine ? [floorLine] : []),
       `${isAr ? "مستوى الشرح" : "Detail level"}: ${complexity}`,
       "",
       complianceResult.executive_summary,
       "",
       ...complianceResult.findings.flatMap((finding, idx) => {
-        const num = `F-${String(idx + 1).padStart(2, "0")}`;
+        const num = findingRef(idx);
         const rows: string[] = [
           `${num} [${finding.status.toUpperCase()}] ${finding.requirement.article}: ${finding.requirement.title}`,
           `${sourceLabel}: ${finding.requirement.source}`,
@@ -1111,9 +1106,33 @@ export default function ComplianceChecker() {
   const breakdown = complianceResult?.score_breakdown ?? null;
   const scoreGate = breakdown?.gate ?? null;
   const findingRef = (i: number) => `F-${String(i + 1).padStart(2, "0")}`;
-  const gateRefs = scoreGate ? scoreGate.findings.map(findingRef).join(", ") : "";
   // Arabic counted-noun form for penalty points (values are 3/5/10/20).
   const arPts = (p: number) => (p >= 11 ? "نقطة" : "نقاط");
+  // Single source for the gate sentence: the on-screen notice and the text
+  // export must never drift apart (bilingual copy rules apply to both).
+  const gateMessage = (g: GateInfo) => {
+    const refs = g.findings.map(findingRef).join(", ");
+    return g.kind === "high_gap"
+      ? t(
+          `Score capped at ${g.cap}: a high-severity confirmed gap (${refs}) places the product in the high-risk band regardless of other strengths.`,
+          `سقف الدرجة ${g.cap}: فجوة مؤكدة عالية الخطورة (${refs}) تضع المنتج في النطاق مرتفع المخاطر بغض النظر عن نقاط القوة الأخرى.`
+        )
+      : t(
+          `Score capped at ${g.cap}: a confirmed moderate gap (${refs}) rules out the low-risk band.`,
+          `سقف الدرجة ${g.cap}: فجوة مؤكدة متوسطة الخطورة (${refs}) تستبعد النطاق منخفض المخاطر.`
+        );
+  };
+  // The floor clamp must be explained like the gates, or the listed
+  // penalties will not reconcile with the shown score (e.g. 6-gap products).
+  const floorApplied = breakdown
+    ? breakdown.base - breakdown.penalties.reduce((a, b) => a + b, 0) < breakdown.subtotal
+    : false;
+  const floorLine = floorApplied
+    ? t(
+        "Minimum score floor of 5 applied: the listed penalties exceed the 100-point base.",
+        "طُبق الحد الأدنى للدرجة (5): مجموع الخصومات المدرجة يتجاوز الرصيد الأساسي 100."
+      )
+    : "";
   const driverLine =
     !breakdown || breakdown.driver === "none"
       ? ""
@@ -1693,17 +1712,10 @@ export default function ComplianceChecker() {
                       </strong>
                     </div>
                     {driverLine && <div className="cx-score-driver">{driverLine}</div>}
+                    {floorLine && <div className="cx-score-driver">{floorLine}</div>}
                     {scoreGate && (
                       <div className={`cx-gate-note${scoreGate.kind === "medium_gap" ? " is-medium" : ""}`} dir={dirAttr}>
-                        {scoreGate.kind === "high_gap"
-                          ? t(
-                              `Score capped at ${scoreGate.cap}: a high-severity confirmed gap (${gateRefs}) places the product in the high-risk band regardless of other strengths.`,
-                              `سقف الدرجة ${scoreGate.cap}: فجوة مؤكدة عالية الخطورة (${gateRefs}) تضع المنتج في النطاق مرتفع المخاطر بغض النظر عن نقاط القوة الأخرى.`
-                            )
-                          : t(
-                              `Score capped at ${scoreGate.cap}: a confirmed moderate gap (${gateRefs}) rules out the low-risk band.`,
-                              `سقف الدرجة ${scoreGate.cap}: فجوة مؤكدة متوسطة الخطورة (${gateRefs}) تستبعد النطاق منخفض المخاطر.`
-                            )}
+                        {gateMessage(scoreGate)}
                       </div>
                     )}
                     <div className="cx-report-meta">
@@ -1716,7 +1728,7 @@ export default function ComplianceChecker() {
                           <ClockMini />
                           {t("Scan date", "تاريخ الفحص")}
                         </span>
-                        <strong>{scanDate}</strong>
+                        <strong>{scanTime ? scanTime.toLocaleDateString(isAr ? "ar-SA" : "en-GB", { day: "numeric", month: "short", year: "numeric" }) : ""}</strong>
                       </div>
                     </div>
                     <p>
@@ -1763,7 +1775,12 @@ export default function ComplianceChecker() {
                 <div className="cx-findings-block">
                   <div className="cx-findings-head">
                     <span>{t("Findings", "النتائج التفصيلية")}</span>
-                    <strong>{t(`${gapCount} gaps · ${reviewCount} to review`, `${gapCount} فجوة · ${reviewCount} بحاجة لمراجعة`)}</strong>
+                    <strong>
+                      {t(
+                        `${gapCount} ${gapCount === 1 ? "gap" : "gaps"} · ${reviewCount} to review`,
+                        `${gapCount} ${gapCount === 1 ? "فجوة" : gapCount === 2 ? "فجوتان" : gapCount <= 10 ? "فجوات" : "فجوة"} · ${reviewCount} بحاجة لمراجعة`
+                      )}
+                    </strong>
                   </div>
                   <div className="cx-findings-list">
                     {(complianceResult?.findings ?? []).map((finding, idx) => {
@@ -1773,7 +1790,7 @@ export default function ComplianceChecker() {
                       const barColor = finding.status === "gap" ? "#b42318" : finding.status === "needs_review" ? "#a15c09" : "#147a5b";
                       const badgeBg = finding.status === "gap" ? "rgba(180,35,24,.1)" : finding.status === "needs_review" ? "rgba(161,92,9,.1)" : "rgba(20,122,91,.1)";
                       const statusLabel = finding.status === "gap" ? t("Gap", "فجوة") : finding.status === "needs_review" ? t("Needs Review", "بحاجة لمراجعة") : t("Compliant", "متوافق");
-                      const findingNum = `F-${String(idx + 1).padStart(2, "0")}`;
+                      const findingNum = findingRef(idx);
                       return (
                         <article className={`cx-finding-row${compliant ? " is-compliant" : ""}`} id={`finding-${idx}`} key={findingKey}>
                           <button

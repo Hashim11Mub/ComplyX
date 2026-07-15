@@ -24,7 +24,7 @@ from pydantic import BaseModel
 
 from ..config import settings
 from ..models import ComplianceResult
-from ..scoring import projected_score
+from ..scoring import projected_score, score_findings
 from ..textclean import clean_excerpt
 
 router = APIRouter()
@@ -84,6 +84,7 @@ _T = {
         "driver_gaps": "المؤثر الرئيسي على الدرجة: فجوات مؤكدة",
         "driver_reviews": "المؤثر الرئيسي على الدرجة: نقاط بحاجة لمراجعة، وليست فجوات مؤكدة",
         "driver_mixed": "الدرجة متأثرة بالتساوي بين الفجوات المؤكدة والنقاط التي تحتاج لمراجعة",
+        "floor_note": "طُبق الحد الأدنى للدرجة (5): مجموع الخصومات المدرجة يتجاوز الرصيد الأساسي 100.",
         "impact": "الأثر على الدرجة",
         "roadmap": "خارطة المعالجة",
         "roadmap_note": "الثغرات والبنود التي تتطلب مراجعة، مرتبة حسب الحالة والخطورة. عالجها بهذا الترتيب.",
@@ -127,6 +128,7 @@ _T = {
         "driver_gaps": "Main score driver: confirmed gaps",
         "driver_reviews": "Main score driver: items needing review, not confirmed gaps",
         "driver_mixed": "Score driven equally by confirmed gaps and items needing review",
+        "floor_note": "Minimum score floor of 5 applied: the listed penalties exceed the 100-point base.",
         "impact": "Score impact",
         "roadmap": "Remediation roadmap",
         "roadmap_note": "Gap and needs-review findings, ordered by status and severity. Resolve in this order.",
@@ -165,6 +167,12 @@ _LOGO_SVG = (
 
 def _e(text: str) -> str:
     return html.escape(text or "")
+
+
+def _fref(n: int) -> str:
+    """Finding reference label from a 1-based finding number (F-01, F-02...).
+    Callers holding 0-based indexes (e.g. GateInfo.findings) must pass n+1."""
+    return f"F-{n:02d}"
 
 
 _PRODUCT_TYPE_LABEL = {
@@ -223,7 +231,7 @@ def _build_html(req: ReportPdfRequest) -> str:
         tint_bg, tint_border = _STATUS_TINT[f.status]
         return f"""<tr>
           <td class="td pri-td"><span class="pri-dot" style="background:{_STATUS_COLOR[f.status]}">{i}</span></td>
-          <td class="td"><div class="req-cell"><span class="req-title">{_e(f.requirement.title)} (F-{finding_index[id(f)]:02d})</span>
+          <td class="td"><div class="req-cell"><span class="req-title">{_e(f.requirement.title)} ({_fref(finding_index[id(f)])})</span>
             <span class="row-pill" style="color:{_STATUS_COLOR[f.status]};background:{tint_bg};border-color:{tint_border}">{t['status'][f.status]} · {t['risk_l'].get(f.risk, f.risk)}</span></div></td>
           <td class="td action-td">{_e(f.recommendation)}</td>
           <td class="td signoff-td"><span class="owner-chip">{_owner(f.recommendation + ' ' + f.analysis, lang)}</span>
@@ -236,8 +244,13 @@ def _build_html(req: ReportPdfRequest) -> str:
         or f'<tr><td colspan="5" class="td empty">{t["none"]}</td></tr>'
 
     # ── Finding cards ──
-    penalties = r.score_breakdown.penalties
-    gate = r.score_breakdown.gate
+    # Never trust the client-posted breakdown: recompute deterministically
+    # from the posted findings, so penalties, gate refs and the floor note
+    # always match the cards actually rendered (and pre-v3 clients that post
+    # a result without score_breakdown still get a correct PDF).
+    _, _, _, breakdown = score_findings(r.findings)
+    penalties = breakdown.penalties
+    gate = breakdown.gate
 
     def _card(i: int, f) -> str:
         status_color = _STATUS_COLOR[f.status]
@@ -252,7 +265,7 @@ def _build_html(req: ReportPdfRequest) -> str:
         return f"""<article class="finding" style="border-inline-start-color:{status_color}">
           <div class="f-top">
             <div class="f-id-col">
-              <div class="f-id-row"><span class="f-num">F-{i:02d}</span><span class="reg-tag">{_e(f.requirement.regulator or 'SAMA')}</span></div>
+              <div class="f-id-row"><span class="f-num">{_fref(i)}</span><span class="reg-tag">{_e(f.requirement.regulator or 'SAMA')}</span></div>
               <h3 class="f-title" dir="auto">{_e(f.requirement.title)}</h3>
               <span class="f-src" dir="ltr">{_e(f.requirement.source)} · {_e(f.requirement.article)}</span>
             </div>
@@ -294,7 +307,7 @@ def _build_html(req: ReportPdfRequest) -> str:
 
     gate_band_html = ""
     if gate:
-        refs = ", ".join(f"F-{i + 1:02d}" for i in gate.findings)
+        refs = ", ".join(_fref(i + 1) for i in gate.findings)  # findings are 0-based
         gate_key = "gate_high" if gate.kind == "high_gap" else "gate_medium"
         gate_cls = "is-high" if gate.kind == "high_gap" else "is-medium"
         gate_band_html = (
@@ -302,8 +315,12 @@ def _build_html(req: ReportPdfRequest) -> str:
             f'<span class="gate-text">{t[gate_key].format(cap=gate.cap, refs=refs)}</span></div>'
         )
 
-    driver_key = {"gaps": "driver_gaps", "reviews": "driver_reviews", "mixed": "driver_mixed"}.get(r.score_breakdown.driver)
+    driver_key = {"gaps": "driver_gaps", "reviews": "driver_reviews", "mixed": "driver_mixed"}.get(breakdown.driver)
     driver_html = f'<p class="score-driver">{t[driver_key]}</p>' if driver_key else ""
+    # The floor clamp, like the gates, must be explained or the printed
+    # penalties will not reconcile with the printed score.
+    if breakdown.base - sum(breakdown.penalties) < breakdown.subtotal:
+        driver_html += f'<p class="score-driver">{t["floor_note"]}</p>'
 
     note_html = ""
     if has_attribution:

@@ -114,7 +114,12 @@ def score_findings(findings: list[Finding]) -> tuple[int, RiskLevel, int, ScoreB
 
     gap_burden = sum(p for f, p in zip(findings, penalties) if f.status == "gap")
     review_burden = sum(p for f, p in zip(findings, penalties) if f.status == "needs_review")
-    if gap_burden == 0 and review_burden == 0:
+    if gate is not None:
+        # A binding gate makes the confirmed gap the determinant of the final
+        # number; reporting "driven by reviews" next to a gate banner blaming
+        # a confirmed gap would be contradictory.
+        driver = "gaps"
+    elif gap_burden == 0 and review_burden == 0:
         driver = "none"
     elif gap_burden > review_burden:
         driver = "gaps"
