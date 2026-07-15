@@ -75,6 +75,11 @@ button:disabled {
     animation: none !important;
   }
 
+  /* The regulator marquee is deliberately EXEMPT from reduced-motion (same as
+     the portfolio divider it is modeled on): it is the hero's signature motion,
+     a slow small loop, not a disorienting effect. OS-level "animations off"
+     settings (common on this team's machines) would otherwise freeze it. */
+
   .cx-slot-content,
   .cx-finding-row,
   .cx-report-shell,
@@ -418,7 +423,7 @@ button:disabled {
   grid-template-columns: 1.15fr 0.85fr;
   margin: 0 auto;
   max-width: 1120px;
-  padding: 56px 34px 40px;
+  padding: 44px 34px 30px;
   width: 100%;
 }
 
@@ -517,7 +522,7 @@ html[lang="ar"] .cx-hero-title {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   margin: 0 auto;
   max-width: 1120px;
-  padding: 0 34px 56px;
+  padding: 0 34px 34px;
   position: relative;
   width: 100%;
   z-index: 2;
@@ -563,6 +568,122 @@ html[lang="ar"] .cx-hero-title {
   font-size: 12.5px;
   line-height: 1.55;
   margin: 0;
+}
+
+/* Regulator marquee stripe: the hero's closing band. Two identical copies of
+   the logo sequence scroll on a translate3d loop (see REGULATOR_LOGOS note in
+   ComplianceChecker.tsx); translate3d + will-change keeps the track on its own
+   GPU compositor layer so the -50% loop boundary never jitters. */
+.cx-reg-strip {
+  background: rgba(4, 30, 36, 0.34);
+  border-top: 1px solid rgba(223, 252, 247, 0.14);
+  padding: 18px 0 22px;
+  position: relative;
+  width: 100%;
+  z-index: 2;
+}
+
+.cx-reg-strip-label {
+  color: rgba(191, 224, 220, 0.72);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  margin: 0 auto 16px;
+  padding: 0 24px;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+html[lang="ar"] .cx-reg-strip-label {
+  letter-spacing: 0;
+}
+
+.cx-visually-hidden {
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
+}
+
+.cx-reg-marquee {
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 10%, #000 90%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 10%, #000 90%, transparent);
+  overflow: hidden;
+  width: 100%;
+}
+
+.cx-reg-track {
+  backface-visibility: hidden;
+  display: flex;
+  width: max-content;
+  will-change: transform;
+  animation: regMarquee 48s linear infinite;
+}
+
+.cx-reg-marquee:hover .cx-reg-track {
+  animation-play-state: paused;
+}
+
+/* -50% -> 0 moves the content left-to-right; the two copies make it seamless */
+@keyframes regMarquee {
+  from {
+    transform: translate3d(-50%, 0, 0);
+  }
+  to {
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+.cx-reg-seq {
+  align-items: center;
+  display: flex;
+  flex-shrink: 0;
+}
+
+.cx-reg-item {
+  align-items: center;
+  display: flex;
+  flex-shrink: 0;
+  gap: 52px;
+  padding-right: 52px;
+}
+
+/* Small gold diamond separating the lockups, matching the theme's gold accents */
+.cx-reg-item::after {
+  background: rgba(183, 154, 87, 0.6);
+  content: "";
+  flex-shrink: 0;
+  height: 5px;
+  transform: rotate(45deg);
+  width: 5px;
+}
+
+.cx-reg-logo {
+  display: block;
+  height: 40px;
+  opacity: 0.82;
+  user-select: none;
+  width: auto;
+}
+
+.cx-reg-logo.is-sama {
+  height: 42px;
+}
+
+.cx-reg-logo.is-cma {
+  height: 35px;
+}
+
+.cx-reg-logo.is-sdaia {
+  height: 44px;
+}
+
+.cx-reg-logo.is-aaoifi {
+  height: 43px;
 }
 
 .cx-input-section {
@@ -2586,7 +2707,29 @@ html[dir="rtl"] .cx-chat-drawer {
 
   .cx-trait-grid {
     grid-template-columns: 1fr;
-    padding: 0 24px 38px;
+    padding: 0 24px 28px;
+  }
+
+  .cx-reg-item {
+    gap: 38px;
+    padding-right: 38px;
+  }
+
+  .cx-reg-logo {
+    height: 34px;
+  }
+
+  .cx-reg-logo.is-sama {
+    height: 36px;
+  }
+
+  .cx-reg-logo.is-cma {
+    height: 30px;
+  }
+
+  .cx-reg-logo.is-sdaia,
+  .cx-reg-logo.is-aaoifi {
+    height: 37px;
   }
 }
 

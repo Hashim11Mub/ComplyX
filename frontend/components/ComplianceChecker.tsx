@@ -156,6 +156,18 @@ const CORPUS_DEFS: Array<{ id: Corpus; en: string; ar: string }> = [
 ];
 const ALL_CORPORA: Corpus[] = ["sama", "pdpl", "shariah", "cma"];
 
+// Regulator logos for the hero marquee stripe (white-on-transparent assets in
+// public/regulators). The marquee track renders TWO identical copies of the
+// same repeated sequence so a translate3d(-50%) keyframe loops seamlessly;
+// the copies must stay pixel-identical or the loop boundary will jump.
+const REGULATOR_LOGOS: Array<{ id: string; src: string; en: string; ar: string }> = [
+  { id: "sama", src: "/regulators/sama.png", en: "SAMA, Saudi Central Bank", ar: "البنك المركزي السعودي" },
+  { id: "cma", src: "/regulators/cma.svg", en: "CMA, Capital Market Authority", ar: "هيئة السوق المالية" },
+  { id: "sdaia", src: "/regulators/sdaia.png", en: "SDAIA, Saudi Data and AI Authority", ar: "الهيئة السعودية للبيانات والذكاء الاصطناعي" },
+  { id: "aaoifi", src: "/regulators/aaoifi.png", en: "AAOIFI, Islamic finance standards", ar: "هيئة المحاسبة والمراجعة للمؤسسات المالية الإسلامية" }
+];
+const REG_MARQUEE_REPEAT = 3;
+
 // The 7 dimensions the compliance model checks before deciding whether to ask
 // clarifying questions (kept in sync with CLARIFY_SYSTEM in backend/app/llm.py).
 // Surfacing them live in the input step teaches users what "good" looks like
@@ -1232,6 +1244,30 @@ export default function ComplianceChecker() {
                   <p>{trait.body}</p>
                 </article>
               ))}
+            </div>
+
+            <div className="cx-reg-strip" dir="ltr">
+              <p className="cx-reg-strip-label">
+                {t("Checked against KSA regulators and standards bodies", "الفحص مقابل الجهات التنظيمية وهيئات المعايير في المملكة")}
+              </p>
+              <p className="cx-visually-hidden">
+                {REGULATOR_LOGOS.map((logo) => t(logo.en, logo.ar)).join(t(", ", "، "))}
+              </p>
+              <div aria-hidden="true" className="cx-reg-marquee">
+                <div className="cx-reg-track">
+                  {[0, 1].map((copy) => (
+                    <div className="cx-reg-seq" key={copy}>
+                      {Array.from({ length: REG_MARQUEE_REPEAT }).map((_, rep) =>
+                        REGULATOR_LOGOS.map((logo) => (
+                          <span className="cx-reg-item" key={`${rep}-${logo.id}`}>
+                            <img alt="" className={`cx-reg-logo is-${logo.id}`} draggable={false} src={logo.src} />
+                          </span>
+                        ))
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           </section>
 

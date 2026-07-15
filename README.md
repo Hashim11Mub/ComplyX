@@ -237,6 +237,7 @@ ComplyX/
 │   │   └── globals.css
 │   ├── components/
 │   │   └── ComplianceChecker.tsx   # Main UI (hero, input, interview, analysis, report, chat)
+│   ├── public/regulators/      # White regulator logos (SAMA, CMA, SDAIA, AAOIFI) for the hero stripe
 │   └── lib/
 │       ├── api.ts              # API client incl. streaming + retone + chat context
 │       └── types.ts            # TypeScript types (exact mirror of Pydantic models)
