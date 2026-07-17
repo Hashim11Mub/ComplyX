@@ -80,24 +80,30 @@ const PRESETS: Preset[] = [
     en: "Digital wallet",
     ar: "محفظة رقمية",
     productId: "wallet",
-    enText: "A digital wallet that lets users transfer funds between bank accounts, store payment cards, and pay via NFC, with integration into local e-commerce apps.",
-    arText: "محفظة رقمية تتيح للمستخدمين تحويل الأموال بين الحسابات البنكية وتخزين بطاقات الدفع، مع إمكانية الدفع عبر NFC وربط مع تطبيقات التسوق الإلكتروني المحلية."
+    enText:
+      "We are building a digital wallet for residents and micro merchants in Saudi Arabia. The wallet lets users store tokenized cards, transfer money between local bank accounts, pay merchants through NFC and QR, receive refunds, and view a full transaction history. The product is before submitting a SAMA payment services licence application. Expected limits are SAR 2,500 per transaction, SAR 10,000 daily, and SAR 50,000 monthly. Integrations include Mada, SARIE, SADAD, Nafath, and a third party fraud monitoring provider. We collect national ID or iqama number, mobile number, device fingerprint, encrypted card tokens, transaction history, beneficiary data, and dispute records. Authentication uses OTP, device binding, biometric unlock, velocity rules, and real time suspicious transaction alerts. Please assess licensing requirements, safeguarding of customer funds, AML and fraud controls, data protection obligations, operational risk, and launch blockers.",
+    arText:
+      "نبني محفظة رقمية للمقيمين وأصحاب المشاريع الصغيرة داخل السعودية. تتيح المحفظة تخزين البطاقات بشكل مرمز، تحويل الأموال بين الحسابات البنكية المحلية، الدفع للتجار عبر NFC وQR، استقبال الاستردادات، وعرض سجل كامل للعمليات. المنتج حالياً قبل تقديم طلب ترخيص مزود خدمات الدفع من ساما. الحدود المتوقعة: 2,500 ريال للعملية الواحدة، 10,000 ريال يومياً، و50,000 ريال شهرياً. التكاملات تشمل مدى، سريع، سداد، نفاذ، ومزود خارجي لمراقبة الاحتيال. نجمع رقم الهوية أو الإقامة، رقم الجوال، بصمة الجهاز، رموز البطاقات المشفرة، سجل العمليات، بيانات المستفيدين، وسجلات النزاعات. المصادقة عبر OTP، ربط الجهاز، البصمة، قواعد سرعة العمليات، وتنبيهات فورية للعمليات المشبوهة. أريد تقييم متطلبات الترخيص، حماية أموال العملاء، مكافحة غسل الأموال والاحتيال، حماية البيانات، المخاطر التشغيلية، وعوائق الإطلاق."
   },
   {
     id: "p2",
     en: "BNPL checkout",
     ar: "دفع آجل",
     productId: "bnpl",
-    enText: "A buy-now-pay-later product that splits purchases into 4 interest-free installments, integrated with Saudi e-commerce merchants via an API.",
-    arText: "منتج تمويل نقاط البيع (BNPL) يتيح تقسيط المشتريات على 4 دفعات بدون فوائد، ويتكامل مع المتاجر الإلكترونية السعودية عبر واجهة برمجية."
+    enText:
+      "We are launching a buy now pay later checkout product for Saudi e-commerce merchants. Customers are individual consumers in Saudi Arabia, verified through Nafath and a local credit bureau. The service splits purchases into 4 interest free installments over 8 weeks, with a maximum order value of SAR 3,000 and monthly customer exposure capped at SAR 8,000. Merchants receive settlement within 2 business days after deducting a merchant service fee. There are no late interest charges, but we may charge fixed administrative recovery fees after repeated missed payments. We collect identity data, income range, bureau score, repayment history, device data, merchant transaction data, and customer support records. Please assess whether this triggers consumer finance or credit information obligations, required disclosures, affordability checks, Shariah considerations, debt collection controls, data protection, and the strongest compliance gaps before pilot launch.",
+    arText:
+      "نطلق منتج دفع آجل للمتاجر الإلكترونية السعودية. العملاء أفراد داخل السعودية ويتم التحقق منهم عبر نفاذ وأحد مكاتب المعلومات الائتمانية المحلية. الخدمة تقسم قيمة الشراء إلى 4 دفعات بدون فوائد خلال 8 أسابيع، بحد أعلى 3,000 ريال للطلب و8,000 ريال كتعرض شهري للعميل. يحصل التاجر على التسوية خلال يومي عمل بعد خصم عمولة خدمة التاجر. لا توجد فوائد تأخير، لكن قد توجد رسوم إدارية ثابتة عند تكرار التعثر. نجمع بيانات الهوية، نطاق الدخل، نتيجة المكتب الائتماني، سجل السداد، بيانات الجهاز، بيانات عمليات التاجر، وسجلات خدمة العملاء. أريد تقييم ما إذا كان المنتج يندرج تحت التمويل الاستهلاكي أو التزامات المعلومات الائتمانية، ومتطلبات الإفصاح، فحص الملاءة، الاعتبارات الشرعية، ضوابط التحصيل، حماية البيانات، وأهم فجوات الامتثال قبل الإطلاق التجريبي."
   },
   {
     id: "p3",
     en: "Robo-advisor",
     ar: "استشارات آلية",
     productId: "robo",
-    enText: "An automated investment advisory platform that builds portfolios for retail clients based on risk tolerance, with monthly automatic rebalancing.",
-    arText: "منصة استشارات استثمارية آلية تقترح محافظ استثمارية للعملاء الأفراد بناءً على تحمل المخاطر، مع إعادة موازنة تلقائية شهرية."
+    enText:
+      "We are building an automated investment advisory platform for retail investors in Saudi Arabia. The product asks users about income, investment horizon, risk tolerance, financial goals, dependents, investment knowledge, and Shariah preference, then recommends a diversified portfolio of Saudi and GCC ETFs and money market funds. The platform does not hold client assets directly, but sends execution instructions to a licensed brokerage partner after user approval. We are currently before applying for a CMA fintech or investment advisory pathway. Portfolio rebalancing is monthly, alerts are sent when risk exposure changes, and users can override recommendations. We collect KYC data, suitability questionnaire answers, investment objectives, transaction instructions, portfolio history, and consent logs. Please assess CMA licensing implications, suitability and disclosure requirements, conflict of interest controls, audit trail requirements, data protection, outsourcing risk, Shariah screening, and what must be validated by a human compliance reviewer.",
+    arText:
+      "نبني منصة استشارات استثمارية آلية للمستثمرين الأفراد في السعودية. يسأل المنتج المستخدم عن الدخل، أفق الاستثمار، تحمل المخاطر، الأهداف المالية، الالتزامات العائلية، المعرفة الاستثمارية، والتفضيل الشرعي، ثم يقترح محفظة متنوعة من صناديق ETF سعودية وخليجية وصناديق سوق نقد. المنصة لا تحتفظ بأصول العملاء مباشرة، لكنها ترسل أوامر التنفيذ إلى وسيط مرخص بعد موافقة المستخدم. نحن حالياً قبل التقديم على مسار فنتك أو ترخيص استشارات استثمارية من هيئة السوق المالية. تتم إعادة الموازنة شهرياً، وتصل تنبيهات عند تغير مستوى المخاطر، ويمكن للمستخدم تجاوز التوصيات. نجمع بيانات اعرف عميلك، إجابات ملاءمة المنتج، أهداف الاستثمار، أوامر التنفيذ، سجل المحفظة، وسجلات الموافقة. أريد تقييم أثر الترخيص من هيئة السوق، متطلبات الملاءمة والإفصاح، تضارب المصالح، أثر التدقيق، حماية البيانات، مخاطر الإسناد الخارجي، الفحص الشرعي، وما يجب مراجعته بشرياً قبل الاعتماد."
   }
 ];
 
@@ -155,7 +161,6 @@ const CORPUS_DEFS: Array<{ id: Corpus; en: string; ar: string }> = [
   { id: "shariah", en: "Shariah · AAOIFI", ar: "المعايير الشرعية" },
   { id: "cma", en: "CMA", ar: "هيئة السوق" }
 ];
-const ALL_CORPORA: Corpus[] = ["sama", "pdpl", "shariah", "cma"];
 
 // Regulator logos for the hero marquee stripe (white-on-transparent assets in
 // public/regulators). The marquee track renders TWO identical copies of the
@@ -381,7 +386,7 @@ export default function ComplianceChecker() {
 
   const [scanSeconds, setScanSeconds] = useState(0);
   const [waitMsgIdx, setWaitMsgIdx] = useState(0);
-  const [selectedCorpora, setSelectedCorpora] = useState<Corpus[]>(ALL_CORPORA);
+  const [selectedCorpora, setSelectedCorpora] = useState<Corpus[]>(["sama"]);
   const [liveFindings, setLiveFindings] = useState<Finding[]>([]);
   const [retrievedArticles, setRetrievedArticles] = useState<RetrievedArticle[]>([]);
   const [retrievedTitlesAr, setRetrievedTitlesAr] = useState<string[]>([]);
@@ -391,6 +396,8 @@ export default function ComplianceChecker() {
   // re-localizes the date (a captured string kept the old locale's digits).
   const [scanTime, setScanTime] = useState<Date | null>(null);
   const [pdfBusy, setPdfBusy] = useState(false);
+  const [pdfReady, setPdfReady] = useState(false);
+  const [pdfError, setPdfError] = useState<string | null>(null);
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
@@ -534,6 +541,12 @@ export default function ComplianceChecker() {
       return `${text}\n\n${label}\n${doc}`;
     }
     return doc || inputText;
+  }
+
+  function submittedPreview() {
+    const text = (submittedDesc || effectiveDesc()).replace(/\s+/g, " ").trim();
+    const limit = isAr ? 66 : 78;
+    return text.length > limit ? `${text.slice(0, limit).trim()}…` : text;
   }
 
   function applyPreset(preset: Preset) {
@@ -1178,6 +1191,22 @@ export default function ComplianceChecker() {
 
   const coverageFlags = computeCoverage(effectiveDesc());
   const coverageCovered = coverageFlags.filter(Boolean).length;
+  const promptText = effectiveDesc().replace(/\s+/g, " ").trim();
+  const promptMissingCore = COVERAGE_DIMS
+    .map((dim, index) => ({ dim, covered: coverageFlags[index] }))
+    .filter(({ dim, covered }) => ["data", "users", "license"].includes(dim.id) && !covered)
+    .map(({ dim }) => dim);
+  const promptNeedsDetail = promptText.length > 0 && (promptText.length < 90 || promptMissingCore.length > 0);
+  const promptQualityLabel = promptText.length === 0
+    ? t("Start typing", "ابدأ الكتابة")
+    : promptNeedsDetail
+      ? t("Needs more detail", "يحتاج تفاصيل أكثر")
+      : t("Good", "جيد");
+  const promptQualityHint = promptText.length === 0
+    ? t("Add the product idea, target users, data handling, and license status.", "أضف فكرة المنتج، المستخدمين المستهدفين، التعامل مع البيانات، وحالة الترخيص.")
+    : promptNeedsDetail
+      ? t("Add the missing details below to get a sharper compliance report.", "أضف التفاصيل الناقصة أدناه للحصول على تقرير امتثال أدق.")
+      : t("This is enough to start a focused compliance scan.", "هذا كافٍ لبدء فحص امتثال مركز.");
 
   return (
     <div className="cx-root">
@@ -1199,7 +1228,7 @@ export default function ComplianceChecker() {
               ? t("Connecting…", "جارٍ الاتصال…")
               : health.ready
                 ? `${t("KSA Regs · Live", "اللوائح السعودية · محدّث")} · ${health.indexed_articles.toLocaleString()}`
-                : t("Backend offline", "الخادم غير متصل")}
+                : t("Demo ready", "جاهز للعرض")}
           </div>
           <div className="cx-lang-toggle">
             <div className={`cx-lang-indicator${isAr ? " is-ar" : ""}`} />
@@ -1347,6 +1376,28 @@ export default function ComplianceChecker() {
                         value={inputText}
                       />
                       <div className="cx-char-count">{inputText.length} / 4000</div>
+                    </div>
+                    <div className={`cx-prompt-quality${promptText.length > 0 && !promptNeedsDetail ? " is-good" : ""}`}>
+                      <div className="cx-prompt-quality-main">
+                        <span className="cx-prompt-quality-dot" />
+                        <div>
+                          <strong>{promptQualityLabel}</strong>
+                          <p>{promptQualityHint}</p>
+                        </div>
+                      </div>
+                      {promptText.length > 0 && promptMissingCore.length > 0 ? (
+                        <div className="cx-prompt-missing">
+                          {promptMissingCore.map((dim) => (
+                            <span key={dim.id}>
+                              {dim.id === "data"
+                                ? t("Missing data handling", "ينقصه التعامل مع البيانات")
+                                : dim.id === "users"
+                                  ? t("Missing target users", "ينقصه المستخدمون المستهدفون")
+                                  : t("Missing licensing status", "ينقصه حالة الترخيص")}
+                            </span>
+                          ))}
+                        </div>
+                      ) : null}
                     </div>
                     <div className="cx-attach-row">
                       {uploadedFile ? (
@@ -1588,7 +1639,7 @@ export default function ComplianceChecker() {
                       {uploadedFile.name}
                     </em>
                   )}
-                  <p dir={dirAttr}>{(submittedDesc || effectiveDesc()).replace(/\s+/g, " ").trim()}</p>
+                  <p dir={dirAttr}>{submittedPreview()}</p>
                   <em>{complexityDefs.find((item) => item.id === complexity)?.label}</em>
                 </div>
 
@@ -1932,9 +1983,11 @@ export default function ComplianceChecker() {
                           return { question: isAr ? question.text_ar : question.text_en, answer: labels.join(", ") };
                         });
                       try {
+                        setPdfError(null);
                         await downloadPdfReport(complianceResult, lang, productName, interview, refNumber);
+                        setPdfReady(true);
                       } catch {
-                        downloadReport(); // graceful fallback to the plain-text export
+                        setPdfError(t("PDF export failed. Please try again.", "تعذر تصدير PDF. حاول مرة أخرى."));
                       } finally {
                         setPdfBusy(false);
                       }
@@ -1948,7 +2001,17 @@ export default function ComplianceChecker() {
                     <DownloadMini />
                     {t("Text version", "نسخة نصية")}
                   </button>
+                  {pdfReady && complianceResult && (
+                    <Link
+                      className="cx-download-btn cx-alinma-continue"
+                      href={`/alinma-dashboard?ref=${encodeURIComponent(refNumber || "CPX-DEMO")}&score=${complianceResult.compliance_score}&risk=${complianceResult.risk_level}&gaps=${complianceResult.gaps_count}`}
+                    >
+                      <AlinmaMini />
+                      {t("Continue with Alinma", "المتابعة عبر الإنماء")}
+                    </Link>
+                  )}
                 </div>
+                {pdfError && <p className="cx-pdf-error" role="alert">{pdfError}</p>}
               </div>
             </section>
           )}
@@ -2325,6 +2388,16 @@ function DownloadMini() {
     <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#006b68" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M12 3v12M8 11l4 4 4-4" />
       <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" />
+    </svg>
+  );
+}
+
+function AlinmaMini() {
+  return (
+    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <rect x="3" y="3" width="18" height="18" rx="4" fill="#ffffff" />
+      <path d="M13.8 5.5h3.2v13h-3.2l-5.5-6.1 5.5-6.9Z" fill="#08233F" />
+      <path d="M7.1 18.5h4.7l-2.4-2.8-2.3 2.8Z" fill="#E76D45" />
     </svg>
   );
 }

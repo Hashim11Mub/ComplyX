@@ -45,6 +45,7 @@ _CORPUS_RULES: list[tuple[str, str, str]] = [
     ("personaldata", "pdpl", "SDAIA"),
     ("pdpl", "pdpl", "SDAIA"),
     ("sdaia", "pdpl", "SDAIA"),
+    ("shariah_governance_framework_sama", "shariah", "SAMA"),
     ("shariaa", "shariah", "AAOIFI"),
     ("shariah", "shariah", "AAOIFI"),
     ("aaoifi", "shariah", "AAOIFI"),

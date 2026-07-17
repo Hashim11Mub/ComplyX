@@ -979,6 +979,82 @@ html[lang="ar"] .cx-reg-strip-label {
   position: absolute;
 }
 
+.cx-prompt-quality {
+  align-items: flex-start;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(0, 107, 104, 0.16);
+  border-radius: 12px;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  margin-top: 10px;
+  padding: 11px 12px;
+}
+
+.cx-prompt-quality.is-good {
+  background: rgba(230, 255, 251, 0.75);
+  border-color: rgba(0, 107, 104, 0.28);
+}
+
+.cx-prompt-quality-main {
+  align-items: flex-start;
+  display: flex;
+  gap: 9px;
+  min-width: 0;
+}
+
+.cx-prompt-quality-main strong {
+  color: var(--ink);
+  display: block;
+  font-size: 13px;
+  font-weight: 900;
+  line-height: 1.25;
+}
+
+.cx-prompt-quality-main p {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.45;
+  margin: 2px 0 0;
+}
+
+.cx-prompt-quality-dot {
+  background: #f2b562;
+  border-radius: 999px;
+  box-shadow: 0 0 0 4px rgba(242, 181, 98, 0.16);
+  flex: 0 0 auto;
+  height: 9px;
+  margin-top: 4px;
+  width: 9px;
+}
+
+.cx-prompt-quality.is-good .cx-prompt-quality-dot {
+  background: var(--teal-700);
+  box-shadow: 0 0 0 4px rgba(0, 107, 104, 0.14);
+}
+
+.cx-prompt-missing {
+  display: flex;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+  max-width: 48%;
+}
+
+.cx-prompt-missing span {
+  background: rgba(242, 181, 98, 0.14);
+  border: 1px solid rgba(242, 181, 98, 0.32);
+  border-radius: 999px;
+  color: #8a5a12;
+  font-size: 11px;
+  font-weight: 850;
+  line-height: 1.25;
+  padding: 5px 8px;
+  white-space: nowrap;
+}
+
 .cx-presets {
   align-items: center;
   display: flex;
@@ -2802,6 +2878,19 @@ html[dir="rtl"] .cx-chat-drawer {
     padding: 18px;
   }
 
+  .cx-prompt-quality {
+    flex-direction: column;
+  }
+
+  .cx-prompt-missing {
+    justify-content: flex-start;
+    max-width: 100%;
+  }
+
+  .cx-prompt-missing span {
+    white-space: normal;
+  }
+
   .cx-product-grid,
   .cx-section-slots,
   .cx-trait-grid {
@@ -2979,6 +3068,437 @@ html[dir="rtl"] .cx-chat-drawer {
 .cx-download-btn.is-primary:disabled {
   cursor: progress;
   opacity: 0.6;
+}
+
+.cx-pdf-error {
+  color: var(--danger);
+  font-size: 13px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.cx-alinma-continue {
+  background: linear-gradient(135deg, #08233f, #1b0061);
+  border-color: transparent;
+  box-shadow: 0 8px 22px rgba(8, 35, 63, 0.26);
+  color: #ffffff;
+  text-decoration: none;
+}
+
+.cx-alinma-continue:hover {
+  background: linear-gradient(135deg, #0c3157, #270083);
+}
+
+/* ── Alinma continuation portal ───────────────────────────────────────── */
+
+.alinma-page {
+  background:
+    radial-gradient(circle at 18% 20%, rgba(45, 118, 168, 0.32), transparent 34%),
+    linear-gradient(135deg, #06131f 0%, #09263b 44%, #050b12 100%);
+  color: #ffffff;
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  min-height: 100vh;
+}
+
+.alinma-sidebar {
+  background: rgba(2, 20, 32, 0.84);
+  border-left: 1px solid rgba(255, 255, 255, 0.12);
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  padding: 22px 18px;
+}
+
+.alinma-side-top {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+}
+
+.alinma-mark {
+  align-items: center;
+  background: #ffffff;
+  border-radius: 12px;
+  color: #08233f;
+  display: flex;
+  font-size: 26px;
+  font-weight: 900;
+  height: 42px;
+  justify-content: center;
+  width: 42px;
+}
+
+.alinma-side-top strong,
+.alinma-side-top span {
+  display: block;
+}
+
+.alinma-side-top strong {
+  font-size: 18px;
+}
+
+.alinma-side-top span {
+  color: rgba(255, 255, 255, 0.58);
+  font-size: 12px;
+  margin-top: 3px;
+}
+
+.alinma-sidebar nav {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.alinma-sidebar nav a,
+.alinma-back {
+  border-radius: 12px;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 13px;
+  font-weight: 700;
+  padding: 12px 14px;
+  text-decoration: none;
+}
+
+.alinma-sidebar nav a.is-active {
+  background: rgba(18, 168, 160, 0.16);
+  color: #8fe8df;
+}
+
+.alinma-back {
+  background: rgba(255, 255, 255, 0.08);
+  margin-top: auto;
+  text-align: center;
+}
+
+.alinma-main {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin: 0 auto;
+  max-width: 1120px;
+  padding: 26px;
+  width: 100%;
+}
+
+.alinma-header {
+  align-items: flex-start;
+  display: flex;
+  gap: 24px;
+  justify-content: space-between;
+}
+
+.alinma-header span,
+.alinma-section-title span,
+.alinma-next-panel span:first-child,
+.alinma-ref span,
+.alinma-metrics span {
+  color: #ffb199;
+  display: block;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.alinma-header h1 {
+  font-size: clamp(30px, 4vw, 44px);
+  line-height: 1.15;
+  margin: 8px 0 10px;
+}
+
+.alinma-header p {
+  color: rgba(255, 255, 255, 0.68);
+  font-size: 15px;
+  line-height: 1.75;
+  margin: 0;
+  max-width: 760px;
+}
+
+.alinma-ref {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  min-width: 160px;
+  padding: 13px;
+}
+
+.alinma-ref strong {
+  display: block;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 18px;
+  margin-top: 8px;
+}
+
+.alinma-hero-card,
+.alinma-next-panel,
+.alinma-workflow {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 24px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.24);
+}
+
+.alinma-hero-card {
+  align-items: center;
+  display: grid;
+  gap: 22px;
+  grid-template-columns: 1fr 190px;
+  padding: 24px;
+}
+
+.alinma-badge {
+  background: rgba(231, 109, 69, 0.16);
+  border: 1px solid rgba(231, 109, 69, 0.42);
+  border-radius: 999px;
+  color: #ffb199;
+  display: inline-flex;
+  font-size: 12px;
+  font-weight: 900;
+  padding: 8px 13px;
+}
+
+.alinma-hero-card h2,
+.alinma-section-title h2,
+.alinma-next-panel h2 {
+  margin: 12px 0 9px;
+}
+
+.alinma-hero-card h2 {
+  font-size: clamp(24px, 3.2vw, 34px);
+}
+
+.alinma-hero-card p {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 14.5px;
+  line-height: 1.75;
+  margin: 0;
+  max-width: 760px;
+}
+
+.alinma-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.alinma-actions button,
+.alinma-actions a {
+  align-items: center;
+  border-radius: 13px;
+  display: inline-flex;
+  font-weight: 900;
+  font-size: 13px;
+  height: 42px;
+  justify-content: center;
+  padding: 0 18px;
+  text-decoration: none;
+}
+
+.alinma-actions button {
+  background: #ff5a00;
+  border: 0;
+  color: #ffffff;
+  cursor: pointer;
+}
+
+.alinma-actions a {
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #ffffff;
+}
+
+.alinma-readiness {
+  align-items: center;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  position: relative;
+}
+
+.alinma-readiness svg {
+  height: 144px;
+  transform: rotate(-90deg);
+  width: 144px;
+}
+
+.alinma-readiness circle {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.12);
+  stroke-width: 12;
+}
+
+.alinma-readiness circle:last-child {
+  stroke: #12a8a0;
+  stroke-dasharray: 302;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.5s ease;
+}
+
+.alinma-readiness strong {
+  font-size: 34px;
+  position: absolute;
+  top: 48px;
+}
+
+.alinma-readiness span {
+  color: rgba(255, 255, 255, 0.64);
+  font-size: 14px;
+  font-weight: 800;
+  margin-top: 8px;
+}
+
+.alinma-metrics {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.alinma-metrics div {
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 18px;
+  padding: 16px;
+}
+
+.alinma-metrics strong {
+  display: block;
+  font-size: 21px;
+  margin-top: 10px;
+}
+
+.risk-low {
+  color: #8fe8df;
+}
+
+.risk-medium {
+  color: #ffd27a;
+}
+
+.risk-high {
+  color: #ff9d8a;
+}
+
+.alinma-workflow,
+.alinma-next-panel {
+  padding: 22px;
+}
+
+.alinma-section-title h2,
+.alinma-next-panel h2 {
+  font-size: 24px;
+}
+
+.alinma-steps {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 20px;
+}
+
+.alinma-steps article {
+  background: rgba(2, 20, 32, 0.54);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  display: flex;
+  gap: 14px;
+  padding: 15px;
+}
+
+.alinma-steps article.is-on {
+  border-color: rgba(18, 168, 160, 0.48);
+  box-shadow: inset 0 0 0 1px rgba(18, 168, 160, 0.16);
+}
+
+.alinma-steps article > span {
+  color: #ffb199;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.alinma-steps strong,
+.alinma-steps em {
+  display: block;
+}
+
+.alinma-steps strong {
+  font-size: 16px;
+}
+
+.alinma-steps em {
+  color: #8fe8df;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 900;
+  margin-top: 5px;
+}
+
+.alinma-steps p {
+  color: rgba(255, 255, 255, 0.66);
+  font-size: 13px;
+  line-height: 1.65;
+  margin: 12px 0 0;
+}
+
+.alinma-next-panel {
+  align-items: center;
+  display: flex;
+  gap: 22px;
+  justify-content: space-between;
+}
+
+.alinma-pill-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.alinma-pill-row span {
+  background: #ffffff;
+  border-radius: 999px;
+  color: #1b0061;
+  font-size: 13px;
+  font-weight: 900;
+  padding: 8px 13px;
+}
+
+.alinma-loading {
+  align-items: center;
+  background: #06131f;
+  color: #ffffff;
+  display: flex;
+  font-weight: 800;
+  justify-content: center;
+  min-height: 100vh;
+}
+
+@media (max-width: 920px) {
+  .alinma-page {
+    grid-template-columns: 1fr;
+  }
+
+  .alinma-sidebar {
+    border-left: 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+  }
+
+  .alinma-sidebar nav {
+    display: none;
+  }
+
+  .alinma-hero-card,
+  .alinma-metrics,
+  .alinma-steps {
+    grid-template-columns: 1fr;
+  }
+
+  .alinma-header,
+  .alinma-next-panel {
+    align-items: stretch;
+    flex-direction: column;
+  }
 }
 
 /* ── Description coverage checklist (Step 1 guidance) ──────────────────── */

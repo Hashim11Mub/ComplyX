@@ -5,7 +5,7 @@ python-docx>=1.1.0
 anthropic>=0.40.0
 # PDF export (F-2): also run `playwright install chromium` once after pip install
 playwright>=1.40
-qdrant-client>=2.0.0
+qdrant-client>=1.18.0
 sentence-transformers>=3.3.0
 pymupdf>=1.24.0
 pydantic-settings>=2.5.0
