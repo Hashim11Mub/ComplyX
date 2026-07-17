@@ -8,12 +8,13 @@ Describe a financial product and ComplyX checks it against KSA regulations, retu
 
 ## What It Does
 
-1. **Describe your product**: type a description, attach a PDF/DOCX/TXT document, or dictate by voice, in Arabic or English. Scope the scan to any combination of regulators (SAMA, PDPL/SDAIA, AAOIFI Shariah, CMA).
-2. **Clarification interview (step 1.5)**: the system asks up to 4 targeted multiple-choice questions about compliance-critical details missing from the description (license status, target users, data handling, and more). Answers are folded into the scan, stay visible alongside the report, and findings that depend on them are explicitly attributed ("Based on your interview answer: ...").
-3. **Live analysis**: semantic search retrieves the relevant regulatory articles (shown on screen within about a second, with Arabic titles in Arabic sessions), then Claude writes findings that stream into the UI as they are produced.
-4. **Scored report**: a deterministic 0-100 compliance score (computed by a fixed penalty formula with severity gates, never by the LLM), risk level, per-finding analysis and recommendation, and the exact regulation text each finding is based on (quote faithfulness 1.0 by construction). The report shows the scoring arithmetic: each finding's point impact, the dominant score driver, and a notice when a severity gate capped the score (a confirmed high-severity gap always places the product in the high-risk band; strengths elsewhere never offset a critical breach). Reports re-render instantly across language and detail level (simple / executive / technical) without the findings or score ever changing.
-5. **Session-aware assistant**: a built-in chat consultant that knows your product description, uploaded document, interview answers, and generated report, and answers follow-up questions grounded in the retrieved regulations.
-6. **Export**: branded bilingual PDF (remediation roadmap plus full findings) or plain-text report.
+1. **Describe your product**: type a description, attach a PDF/DOCX/TXT document, or dictate by voice, in Arabic or English. The UI starts with SAMA selected by default, and users can add PDPL/SDAIA, AAOIFI Shariah, or CMA when needed.
+2. **Prompt guidance**: a live prompt-quality score flags missing data handling, target users, and licensing status while the user types. A dedicated `/docs` prompt guide explains how to write stronger product descriptions with examples and a reusable template.
+3. **Clarification interview (step 1.5)**: the system asks up to 4 targeted multiple-choice questions about compliance-critical details missing from the description (license status, target users, data handling, and more). Answers are folded into the scan, stay visible alongside the report, and findings that depend on them are explicitly attributed ("Based on your interview answer: ...").
+4. **Live analysis**: semantic search retrieves the relevant regulatory articles (shown on screen within about a second, with Arabic titles in Arabic sessions), then Claude writes findings that stream into the UI as they are produced.
+5. **Scored report**: a deterministic 0-100 compliance score (computed by a fixed penalty formula with severity gates, never by the LLM), risk level, per-finding analysis and recommendation, and the exact regulation text each finding is based on (quote faithfulness 1.0 by construction). The report shows the scoring arithmetic: each finding's point impact, the dominant score driver, and a notice when a severity gate capped the score (a confirmed high-severity gap always places the product in the high-risk band; strengths elsewhere never offset a critical breach). Reports re-render instantly across language and detail level (simple / executive / technical) without the findings or score ever changing.
+6. **Session-aware assistant**: a built-in chat consultant that knows your product description, uploaded document, interview answers, and generated report, and answers follow-up questions grounded in the retrieved regulations.
+7. **Export and continuation**: download a branded bilingual PDF or plain-text report. After the PDF is generated, a separate Alinma readiness portal opens from the report flow to continue the automation into a banking/API follow-up journey.
 
 ---
 
@@ -165,7 +166,7 @@ Runs a full compliance scan (non-streaming).
 }
 ```
 
-`corpora` is optional (omit = search everything). Returns a `ComplianceResult`; see `backend/app/models.py` and `frontend/lib/types.ts` (kept in exact sync). The compliance score is computed deterministically from finding statuses/risks (`backend/app/scoring.py`); every finding carries the verbatim regulation text injected server-side, and findings that rely on a clarification answer carry it in `user_answer_ref`.
+`corpora` is optional for direct API calls (omit = search everything). In the frontend, SAMA is selected by default and users can opt into the other corpora before scanning. Returns a `ComplianceResult`; see `backend/app/models.py` and `frontend/lib/types.ts` (kept in exact sync). The compliance score is computed deterministically from finding statuses/risks (`backend/app/scoring.py`); every finding carries the verbatim regulation text injected server-side, and findings that rely on a clarification answer carry it in `user_answer_ref`.
 
 ### `POST /api/check/stream`
 
@@ -231,9 +232,11 @@ Backend readiness, indexed article count, corpus version, and per-corpus chunk c
 ComplyX/
 ├── frontend/                   # Next.js 15 app
 │   ├── app/
+│   │   ├── alinma-dashboard/   # Separate Alinma continuation portal after PDF generation
 │   │   ├── api/                # Proxies to FastAPI (no mock fallbacks)
 │   │   │   ├── check/  check-stream/  clarify/  retone/
 │   │   │   ├── chat/   extract-text/  report-pdf/  health/
+│   │   ├── docs/               # Prompt guide with examples and reusable description template
 │   │   └── globals.css
 │   ├── components/
 │   │   └── ComplianceChecker.tsx   # Main UI (hero, input, interview, analysis, report, chat)
@@ -261,8 +264,7 @@ ComplyX/
 │
 ├── start-demo.ps1              # One-shot boot with layer-by-layer health checks (Windows)
 ├── start-demo.sh                # Same, for macOS (opens Terminal.app windows via osascript)
-├── .env.example
-└── CLAUDE.md                   # Cross-machine agent coordination
+└── .env.example
 ```
 
 ---
