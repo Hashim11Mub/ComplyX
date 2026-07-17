@@ -2,6 +2,7 @@
 
 import { ChangeEvent, KeyboardEvent, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import AlinmaLogo from "./AlinmaLogo";
 import { askConsultant, checkCompliance, downloadPdfReport, fetchHealth, getProductQuestions, retoneReport, streamCheck } from "@/lib/api";
 import type {
   ChatSessionContext,
@@ -14,6 +15,12 @@ import type {
   ProductType as BackendProductType,
   RetrievedArticle
 } from "@/lib/types";
+
+// Toggle the "Packages" topbar link on/off without touching JSX. The
+// /packages route and its CSS always stay in place either way; this only
+// controls whether the entry point to it is shown. Flip and save to
+// hot-reload instantly, no server restart needed.
+const SHOW_PACKAGES_LINK = true;
 
 type Lang = "ar" | "en";
 type Mode = "describe" | "voice";
@@ -73,6 +80,45 @@ const PRODUCT_TYPES: Product[] = [
   { id: "api", en: "Open Banking API", ar: "واجهة مصرفية مفتوحة", icon: "api" },
   { id: "crypto", en: "Crypto Custody", ar: "حفظ أصول رقمية", icon: "crypto" }
 ];
+
+const PRODUCT_TYPE_CONFIRM_ID = "product-type-check";
+const PRODUCT_TYPE_CONFIRM_KEEP = "keep_selected";
+const PRODUCT_TYPE_CONFIRM_SWITCH = "use_detected";
+
+// When the description's detected product type disagrees with what the user
+// picked (or nothing was picked at all), ask a one-tap confirmation instead
+// of silently scanning against the wrong category, which used to surface as
+// an unhelpful "general / not detected" label in the analysis and report.
+function buildProductTypeConfirmQuestion(selectedId: string | null, detectedId: string): ClarifyQuestion | null {
+  if (!detectedId || detectedId === selectedId) return null;
+  const detected = PRODUCT_TYPES.find((product) => product.id === detectedId);
+  if (!detected) return null;
+  const selected = selectedId ? PRODUCT_TYPES.find((product) => product.id === selectedId) : null;
+
+  if (!selected) {
+    return {
+      id: PRODUCT_TYPE_CONFIRM_ID,
+      text_en: `Your description reads like a ${detected.en.toLowerCase()}. Set that as the product type?`,
+      text_ar: `يبدو أن وصفك أقرب إلى "${detected.ar}". هل نحدد هذا كنوع المنتج؟`,
+      allow_multiple: false,
+      options: [
+        { value: PRODUCT_TYPE_CONFIRM_SWITCH, label_en: `Yes, set it to ${detected.en}`, label_ar: `نعم، حدده كـ ${detected.ar}` },
+        { value: PRODUCT_TYPE_CONFIRM_KEEP, label_en: "No, leave it general", label_ar: "لا، اتركه عاماً" }
+      ]
+    };
+  }
+
+  return {
+    id: PRODUCT_TYPE_CONFIRM_ID,
+    text_en: `Your description reads like a ${detected.en.toLowerCase()}, but you selected ${selected.en.toLowerCase()}. Did you mean to select that?`,
+    text_ar: `يبدو أن وصفك أقرب إلى "${detected.ar}"، لكنك اخترت "${selected.ar}". هل هذا مقصود؟`,
+    allow_multiple: false,
+    options: [
+      { value: PRODUCT_TYPE_CONFIRM_KEEP, label_en: `Yes, keep ${selected.en}`, label_ar: `نعم، أبقِ "${selected.ar}"` },
+      { value: PRODUCT_TYPE_CONFIRM_SWITCH, label_en: `No, it's ${detected.en}`, label_ar: `لا، هو "${detected.ar}"` }
+    ]
+  };
+}
 
 const PRESETS: Preset[] = [
   {
@@ -379,6 +425,7 @@ export default function ComplianceChecker() {
   const [clarifyQuestions, setClarifyQuestions] = useState<ClarifyQuestion[]>([]);
   const [clarifyAnswers, setClarifyAnswers] = useState<Record<string, string[]>>({});
   const [clarifyLoading, setClarifyLoading] = useState(false);
+  const [detectedProductCategory, setDetectedProductCategory] = useState("");
   const [submittedDesc, setSubmittedDesc] = useState("");
   const [uploadExtractedText, setUploadExtractedText] = useState("");
   const [uploadExtracting, setUploadExtracting] = useState(false);
@@ -404,6 +451,7 @@ export default function ComplianceChecker() {
   const intervals = useRef<ReturnType<typeof setInterval>[]>([]);
   const rafRef = useRef<number | null>(null);
   const scrollRafRef = useRef<number | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const recognitionRef = useRef<any>(null);
 
@@ -482,6 +530,7 @@ export default function ComplianceChecker() {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
       if (scrollRafRef.current) cancelAnimationFrame(scrollRafRef.current);
       recognitionRef.current?.stop();
+      abortRef.current?.abort();
     };
   }, []);
 
@@ -678,7 +727,7 @@ export default function ComplianceChecker() {
   }
 
   async function startScan() {
-    if (!canScan) return;
+    if (!canScan || appState !== "input") return;
     clearTimers();
     setScanError(null);
     setComplianceResult(null);
@@ -692,7 +741,8 @@ export default function ComplianceChecker() {
     // moment later when the product turns out not to need any questions.
 
     const productType: BackendProductType = selectedProduct ? (PRODUCT_TYPE_MAP[selectedProduct] ?? "general") : "general";
-    const { questions } = await getProductQuestions(effectiveDesc(), productType, lang);
+    const { questions, detected_product_category } = await getProductQuestions(effectiveDesc(), productType, lang);
+    setDetectedProductCategory(detected_product_category);
 
     let effectiveQuestions = questions;
     if (effectiveQuestions.length === 0) {
@@ -702,6 +752,14 @@ export default function ComplianceChecker() {
       const flags = computeCoverage(effectiveDesc());
       const missing = new Set(COVERAGE_DIMS.filter((_, index) => !flags[index]).map((dim) => dim.id));
       effectiveQuestions = FALLBACK_CLARIFY.filter((question) => missing.has(question.id)).slice(0, 4);
+    }
+
+    // If the description reads as a different product than what's selected
+    // (or nothing was selected), lead with a one-tap confirmation so the
+    // scan never silently runs against a mismatched or "general" category.
+    const productTypeConfirm = buildProductTypeConfirmQuestion(selectedProduct, detected_product_category);
+    if (productTypeConfirm) {
+      effectiveQuestions = [productTypeConfirm, ...effectiveQuestions];
     }
 
     setClarifyLoading(false);
@@ -716,7 +774,12 @@ export default function ComplianceChecker() {
     }
   }
 
-  function runActualScan(desc: string) {
+  function runActualScan(desc: string, productIdOverride?: string | null) {
+    // Self-clean re-entrancy guard: if this is somehow invoked twice in
+    // quick succession (a fast double-click on the clarify-step CTA before
+    // React re-renders it disabled), clear whatever the first call already
+    // started so only one set of timers/intervals survives.
+    clearTimers();
     setSubmittedDesc(desc);
     setAppState("scanning");
     setActiveStep(0);
@@ -736,9 +799,18 @@ export default function ComplianceChecker() {
     intervals.current.push(setInterval(() => setScanSeconds((s) => s + 1), 1000));
     intervals.current.push(setInterval(() => setWaitMsgIdx((i) => i + 1), 4500));
 
-    const productType: BackendProductType = selectedProduct ? (PRODUCT_TYPE_MAP[selectedProduct] ?? "general") : "general";
+    const effectiveProductId = productIdOverride !== undefined ? productIdOverride : selectedProduct;
+    const productType: BackendProductType = effectiveProductId ? (PRODUCT_TYPE_MAP[effectiveProductId] ?? "general") : "general";
+
+    // Cancel any still-in-flight previous scan (component unmounting, or a
+    // new scan superseding this one) so its SSE reader stops calling setState
+    // on stale data instead of racing the new scan's own updates.
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
 
     const onScanError = () => {
+      if (controller.signal.aborted) return; // superseded/unmounted, not a real failure
       clearTimers();
       setScanError(isAr ? "تعذر الاتصال بالخادم. تأكد من تشغيل الواجهة الخلفية." : "Could not reach the backend. Make sure it is running.");
       setAppState("input");
@@ -752,13 +824,14 @@ export default function ComplianceChecker() {
       onRetrieved: (articles) => setRetrievedArticles(articles),
       onRetrievedAr: (titles) => setRetrievedTitlesAr(titles),
       onFinding: (finding) => setLiveFindings((current) => [...current, finding])
-    })
+    }, controller.signal)
       .then((result) => {
         setDoneFlags([true, true, true, true]);
         finishScan(result);
       })
       .catch(() => {
-        checkCompliance(desc, productType, complexity, lang, selectedCorpora)
+        if (controller.signal.aborted) return; // do not fall back on an intentional cancel
+        checkCompliance(desc, productType, complexity, lang, selectedCorpora, controller.signal)
           .then((result) => {
             setDoneFlags([true, true, true, true]);
             finishScan(result);
@@ -788,7 +861,10 @@ export default function ComplianceChecker() {
   }
 
   function buildAugmentedDescription() {
-    const answered = clarifyQuestions.filter(q => (clarifyAnswers[q.id] ?? []).length > 0);
+    // The product-type confirmation is a UI correction, not a real detail
+    // about the product, so it drives selectedProduct (see submitClarifications)
+    // instead of being appended to the description text.
+    const answered = clarifyQuestions.filter(q => q.id !== PRODUCT_TYPE_CONFIRM_ID && (clarifyAnswers[q.id] ?? []).length > 0);
     if (answered.length === 0) return effectiveDesc();
     const header = isAr ? "\n\n[تفاصيل إضافية يقدمها المستخدم]\n" : "\n\n[Additional details provided by user]\n";
     const lines = answered.map(q => {
@@ -814,7 +890,11 @@ export default function ComplianceChecker() {
 
   function submitClarifications() {
     setClarifiedCount(Object.values(clarifyAnswers).filter((values) => values.length > 0).length);
-    runActualScan(buildAugmentedDescription());
+    const confirmAnswer = (clarifyAnswers[PRODUCT_TYPE_CONFIRM_ID] ?? [])[0];
+    const productIdOverride =
+      confirmAnswer === PRODUCT_TYPE_CONFIRM_SWITCH && detectedProductCategory ? detectedProductCategory : undefined;
+    if (productIdOverride) setSelectedProduct(productIdOverride);
+    runActualScan(buildAugmentedDescription(), productIdOverride);
   }
 
   function toggleCorpus(corpus: Corpus) {
@@ -901,6 +981,7 @@ export default function ComplianceChecker() {
   }
 
   function startCountUp(targetScore: number) {
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
     const duration = 1200;
     const start = performance.now();
     const step = (now: number) => {
@@ -1054,7 +1135,7 @@ export default function ComplianceChecker() {
     const exportGate = complianceResult.score_breakdown?.gate ?? null;
     const lines = [
       isAr ? "ComplyX - تقرير فحص الامتثال" : "ComplyX - Compliance Report",
-      `Ref: ${refNumber}   Score: ${complianceResult.compliance_score}/100   Risk: ${complianceResult.risk_level.toUpperCase()}`,
+      `${t("Ref", "المرجع")}: ${refNumber}   ${t("Score", "الدرجة")}: ${complianceResult.compliance_score}/100   ${t("Risk", "المخاطر")}: ${riskValueLabel}`,
       ...(exportGate ? [gateMessage(exportGate)] : []),
       ...(floorLine ? [floorLine] : []),
       `${isAr ? "مستوى الشرح" : "Detail level"}: ${complexity}`,
@@ -1064,7 +1145,7 @@ export default function ComplianceChecker() {
       ...complianceResult.findings.flatMap((finding, idx) => {
         const num = findingRef(idx);
         const rows: string[] = [
-          `${num} [${finding.status.toUpperCase()}] ${finding.requirement.article}: ${finding.requirement.title}`,
+          `${num} [${findingStatusLabel(finding.status)}] ${finding.requirement.article}: ${finding.requirement.title}`,
           `${sourceLabel}: ${finding.requirement.source}`,
         ];
         if (finding.requirement.text) {
@@ -1132,6 +1213,10 @@ export default function ComplianceChecker() {
   const breakdown = complianceResult?.score_breakdown ?? null;
   const scoreGate = breakdown?.gate ?? null;
   const findingRef = (i: number) => `F-${String(i + 1).padStart(2, "0")}`;
+  // Single source for the status label: the on-screen finding card and the
+  // plain-text export must never drift apart (bilingual copy rules apply to both).
+  const findingStatusLabel = (status: string) =>
+    status === "gap" ? t("Gap", "فجوة") : status === "needs_review" ? t("Needs Review", "بحاجة لمراجعة") : t("Compliant", "متوافق");
   // Arabic counted-noun form for penalty points (values are 3/5/10/20).
   const arPts = (p: number) => (p >= 11 ? "نقطة" : "نقاط");
   // Single source for the gate sentence: the on-screen notice and the text
@@ -1222,6 +1307,11 @@ export default function ComplianceChecker() {
           <Link className="cx-doc-link" href="/docs">
             {t("Prompt guide", "دليل الوصف")}
           </Link>
+          {SHOW_PACKAGES_LINK && (
+            <Link className="cx-doc-link" href="/packages">
+              {t("Packages", "الباقات")}
+            </Link>
+          )}
           <div className={`cx-status-pill${health && !health.ready ? " is-off" : ""}`}>
             <span />
             {health === null
@@ -1232,10 +1322,10 @@ export default function ComplianceChecker() {
           </div>
           <div className="cx-lang-toggle">
             <div className={`cx-lang-indicator${isAr ? " is-ar" : ""}`} />
-            <button className={`cx-lang-btn${!isAr ? " is-active" : ""}`} disabled={isRefetching} onClick={() => handleLangChange("en")} type="button">
+            <button className={`cx-lang-btn${!isAr ? " is-active" : ""}`} disabled={isRefetching || appState === "scanning"} onClick={() => handleLangChange("en")} type="button">
               EN
             </button>
-            <button className={`cx-lang-btn${isAr ? " is-active" : ""}`} disabled={isRefetching} onClick={() => handleLangChange("ar")} type="button">
+            <button className={`cx-lang-btn${isAr ? " is-active" : ""}`} disabled={isRefetching || appState === "scanning"} onClick={() => handleLangChange("ar")} type="button">
               AR
             </button>
           </div>
@@ -1523,7 +1613,7 @@ export default function ComplianceChecker() {
                   </div>
                 </div>
 
-                <button className={`cx-cta${canScan ? " is-enabled" : ""}`} disabled={!canScan || clarifyLoading} onClick={startScan} type="button">
+                <button className={`cx-cta${canScan && appState === "input" ? " is-enabled" : ""}`} disabled={!canScan || clarifyLoading || appState !== "input"} onClick={startScan} type="button">
                   {clarifyLoading ? (
                     <>
                       <span className="cx-spinner" style={{ width: 16, height: 16, borderColor: "rgba(255,255,255,0.35)", borderTopColor: "#fff" }} />
@@ -1740,8 +1830,11 @@ export default function ComplianceChecker() {
                     {retrievedArticles.length > 8 && (
                       <div className="cx-more-articles">
                         {t(
-                          `${retrievedArticles.length} relevant articles in analysis. Showing the ${Math.min(slotCount, 8)} most decision-critical.`,
-                          `${retrievedArticles.length} مادة ذات صلة قيد التحليل، تُعرض أبرز ${Math.min(slotCount, 8)} مواد.`
+                          `Gathering related regulations, showing the top ${Math.min(slotCount, 8)} matches.`,
+                          `نجمع اللوائح ذات الصلة، ونعرض أبرز ${Math.min(slotCount, 8)} ${(() => {
+                            const n = Math.min(slotCount, 8);
+                            return n === 1 ? "نتيجة" : n === 2 ? "نتيجتان" : n <= 10 ? "نتائج" : "نتيجة";
+                          })()}.`
                         )}
                       </div>
                     )}
@@ -1831,7 +1924,10 @@ export default function ComplianceChecker() {
                     {clarifiedCount > 0 && (
                       <div className="cx-clarified-chip">
                         <CheckSmall />
-                        {t(`Includes ${clarifiedCount} clarified detail${clarifiedCount > 1 ? "s" : ""} from the interview`, `يتضمن ${clarifiedCount} ${clarifiedCount > 1 ? "تفاصيل موضحة" : "تفصيلاً موضحاً"} من المقابلة`)}
+                        {t(
+                          `Includes ${clarifiedCount} clarified detail${clarifiedCount > 1 ? "s" : ""} from the interview`,
+                          `يتضمن ${clarifiedCount} ${clarifiedCount === 1 ? "تفصيلاً موضحاً" : clarifiedCount === 2 ? "تفصيلان موضحان" : clarifiedCount <= 10 ? "تفاصيل موضحة" : "تفصيلاً موضحاً"} من المقابلة`
+                        )}
                       </div>
                     )}
                   </div>
@@ -1880,7 +1976,7 @@ export default function ComplianceChecker() {
                       const compliant = finding.status === "compliant";
                       const barColor = finding.status === "gap" ? "#b42318" : finding.status === "needs_review" ? "#a15c09" : "#147a5b";
                       const badgeBg = finding.status === "gap" ? "rgba(180,35,24,.1)" : finding.status === "needs_review" ? "rgba(161,92,9,.1)" : "rgba(20,122,91,.1)";
-                      const statusLabel = finding.status === "gap" ? t("Gap", "فجوة") : finding.status === "needs_review" ? t("Needs Review", "بحاجة لمراجعة") : t("Compliant", "متوافق");
+                      const statusLabel = findingStatusLabel(finding.status);
                       const findingNum = findingRef(idx);
                       return (
                         <article className={`cx-finding-row${compliant ? " is-compliant" : ""}`} id={`finding-${idx}`} key={findingKey}>
@@ -2006,7 +2102,7 @@ export default function ComplianceChecker() {
                       className="cx-download-btn cx-alinma-continue"
                       href={`/alinma-dashboard?ref=${encodeURIComponent(refNumber || "CPX-DEMO")}&score=${complianceResult.compliance_score}&risk=${complianceResult.risk_level}&gaps=${complianceResult.gaps_count}`}
                     >
-                      <AlinmaMini />
+                      <AlinmaLogo size={17} />
                       {t("Continue with Alinma", "المتابعة عبر الإنماء")}
                     </Link>
                   )}
@@ -2388,16 +2484,6 @@ function DownloadMini() {
     <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#006b68" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M12 3v12M8 11l4 4 4-4" />
       <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" />
-    </svg>
-  );
-}
-
-function AlinmaMini() {
-  return (
-    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <rect x="3" y="3" width="18" height="18" rx="4" fill="#ffffff" />
-      <path d="M13.8 5.5h3.2v13h-3.2l-5.5-6.1 5.5-6.9Z" fill="#08233F" />
-      <path d="M7.1 18.5h4.7l-2.4-2.8-2.3 2.8Z" fill="#E76D45" />
     </svg>
   );
 }

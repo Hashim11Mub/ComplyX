@@ -19,5 +19,5 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  return NextResponse.json({ questions: [] });
+  return NextResponse.json({ questions: [], detected_product_category: "" });
 }

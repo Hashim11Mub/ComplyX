@@ -12,9 +12,13 @@ def retone(body: RetoneRequest) -> ComplianceResult:
     if not body.findings:
         raise HTTPException(status_code=400, detail="No findings to retone")
 
-    findings, executive_summary = retone_findings(
-        body.findings, body.tone, body.lang, original_summary=body.executive_summary
-    )
+    try:
+        findings, executive_summary = retone_findings(
+            body.findings, body.tone, body.lang, original_summary=body.executive_summary
+        )
+    except ValueError as exc:
+        print(f"[retone] retone_findings failed: {exc}")
+        raise HTTPException(status_code=502, detail="تعذر إعادة صياغة التقرير، حاول مرة أخرى") from exc
     score, risk_level, gaps, breakdown = score_findings(findings)
     lang_key = body.lang if body.lang in ("ar", "en") else "ar"
     return ComplianceResult(

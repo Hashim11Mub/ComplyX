@@ -24,6 +24,7 @@ from pydantic import BaseModel
 
 from ..config import settings
 from ..models import ComplianceResult
+from ..retriever import verify_chunk_text
 from ..scoring import projected_score, score_findings
 from ..textclean import clean_excerpt
 
@@ -521,6 +522,24 @@ def report_pdf(body: ReportPdfRequest):
             status_code=501,
             detail="PDF export requires Playwright: pip install playwright && playwright install chromium",
         )
+
+    # This endpoint receives a full ComplianceResult from the client rather
+    # than re-deriving it server-side (no session store exists to key a
+    # trusted result by id), which is a real gap: a client could post
+    # fabricated findings and receive a legitimately-branded PDF citing
+    # regulations that were never actually retrieved. verify_chunk_text was
+    # meant to close that gap by confirming every "verbatim" quote exists in
+    # the indexed corpus for its cited source/article, but it has produced
+    # false positives against genuine scan results (cause not yet fully
+    # understood — under investigation) and hard-blocking on it broke PDF
+    # export for real users. Fail OPEN until the false-positive cause is
+    # found and fixed: log anything that doesn't verify, never block on it.
+    for f in body.result.findings:
+        if not verify_chunk_text(f.requirement.source, f.requirement.article, f.requirement.text):
+            print(
+                f"[report-pdf] WARNING: could not verify citation against indexed corpus "
+                f"(not blocking): source={f.requirement.source!r} article={f.requirement.article!r}"
+            )
 
     html_doc = _build_html(body)
     ref = html.escape(body.session_ref or "CX-2026")

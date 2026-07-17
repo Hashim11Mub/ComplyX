@@ -72,7 +72,13 @@ def _diversify(hits: list[dict], limit: int, max_per_article: int = 2) -> list[d
 def search(query: str, limit: int = 8, corpora: list[str] | None = None) -> list[dict]:
     """Semantic search. When several corpora are selected, retrieval is
     balanced per corpus so the large SAMA corpus doesn't drown the others,
-    then merged by score."""
+    then merged by score. corpora=None means "search all" (the documented
+    default); corpora=[] means the caller explicitly selected zero corpora,
+    which must NOT silently fall back to "all" (callers already treat an
+    empty chunk list as "no matching regulations found")."""
+    if corpora is not None and len(corpora) == 0:
+        return []
+
     client = get_client()
     vector = embed_query(query)
 
@@ -88,6 +94,33 @@ def search(query: str, limit: int = 8, corpora: list[str] | None = None) -> list
         merged.extend(_diversify(_query(client, vector, per_corpus * 3, corpus), per_corpus))
     merged.sort(key=lambda c: c["score"], reverse=True)
     return merged[:limit]
+
+
+def verify_chunk_text(source: str, article: str, text: str) -> bool:
+    """Defends POST /api/report-pdf against a client posting a fabricated
+    ComplianceResult: confirms `text` is genuinely a contiguous substring of
+    a real indexed chunk for that source/article. Legitimate findings always
+    pass this, since clean_excerpt() only trims from the ends, so the stored
+    quote is always a real substring of the original chunk text."""
+    if not text.strip():
+        return False
+    client = get_client()
+    flt = Filter(must=[
+        FieldCondition(key="regulation_name", match=MatchValue(value=source)),
+        FieldCondition(key="article_number", match=MatchValue(value=article)),
+    ])
+    # Long articles are split into many windowed continuation chunks that all
+    # share the same source/article_number label (one document alone has
+    # 3,201 chunks), so a small limit can miss the specific window a finding
+    # actually quoted from. Filtered to one exact source+article, the match
+    # set is small regardless, so a generous cap costs nothing in practice.
+    points, _ = client.scroll(
+        collection_name=settings.qdrant_collection,
+        scroll_filter=flt,
+        limit=200,
+        with_payload=True,
+    )
+    return any(text in p.payload.get("text", "") for p in points)
 
 
 def count_by_corpus() -> dict[str, int]:

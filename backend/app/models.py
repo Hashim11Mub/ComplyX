@@ -109,6 +109,11 @@ class ClarifyRequest(BaseModel):
 
 class ClarifyResponse(BaseModel):
     questions: list[ClarifyQuestion]
+    # One of PRODUCT_CATEGORY_IDS (see llm.py), or "" if the description does
+    # not clearly match any of them. Detected from the description alone,
+    # independent of whatever product_type the client sent, so the frontend
+    # can flag a mismatch against the user's own selection.
+    detected_product_category: str = ""
 
 
 class ChatMessage(BaseModel):

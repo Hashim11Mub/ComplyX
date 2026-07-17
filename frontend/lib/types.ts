@@ -120,6 +120,25 @@ export type ClarifyQuestion = {
 
 export type ClarifyResponse = {
   questions: ClarifyQuestion[];
+  detected_product_category: string;
+};
+
+/** Mirrors backend CheckRequest (models.py). */
+export type CheckRequest = {
+  product_description: string;
+  product_type: ProductType;
+  tone?: string;
+  lang?: string;
+  corpora?: Corpus[] | null;
+};
+
+/** Mirrors backend RetoneRequest (models.py). */
+export type RetoneRequest = {
+  product_type: ProductType;
+  tone: string;
+  lang: string;
+  findings: Finding[];
+  executive_summary?: string;
 };
 
 /** Mirrors backend ChatFindingBrief (models.py). */
@@ -145,4 +164,24 @@ export type ChatSessionContext = {
   findings?: ChatFindingBrief[];
   executive_summary?: string;
   lang?: "ar" | "en";
+};
+
+/** Mirrors backend ChatMessage (models.py) — the wire format sent to
+ * /api/chat. Distinct from ComplianceChecker.tsx's local chat-bubble UI
+ * state type (id/fromUser/text), which is never sent over the wire. */
+export type ChatMessage = {
+  role: "user" | "assistant";
+  content: string;
+};
+
+/** Mirrors backend ChatRequest (models.py). */
+export type ChatRequest = {
+  query: string;
+  messages: ChatMessage[];
+  context?: ChatSessionContext | null;
+};
+
+/** Mirrors backend ChatResponse (models.py). */
+export type ChatResponse = {
+  answer: string;
 };

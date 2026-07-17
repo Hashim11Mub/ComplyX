@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import AlinmaLogo from "@/components/AlinmaLogo";
 import { Suspense, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
@@ -56,7 +57,7 @@ function AlinmaDashboardContent() {
     <main className="alinma-page" dir="rtl">
       <aside className="alinma-sidebar" aria-label="Alinma navigation">
         <div className="alinma-side-top">
-          <div className="alinma-mark">ا</div>
+          <AlinmaLogo size={42} />
           <div>
             <strong>الإنماء</strong>
             <span>Fintech Portal</span>

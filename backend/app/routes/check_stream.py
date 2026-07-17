@@ -70,8 +70,9 @@ def check_compliance_stream(body: CheckRequest):
                     yield _sse({"event": "finding", "finding": payload.model_dump()})
                 elif kind == "complete":
                     yield _sse({"event": "complete", "result": payload.model_dump()})
-        except Exception as exc:  # surfaced to the client, which falls back to /api/check
-            yield _sse({"event": "error", "detail": str(exc)})
+        except Exception as exc:  # client falls back to /api/check on any error event
+            print(f"[check/stream] analyze_compliance_stream failed: {exc}")
+            yield _sse({"event": "error", "detail": "تعذر إكمال الفحص، سيتم إعادة المحاولة"})
 
     return StreamingResponse(
         generate(),

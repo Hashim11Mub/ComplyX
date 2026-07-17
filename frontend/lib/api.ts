@@ -1,16 +1,19 @@
-import { ChatSessionContext, ComplianceResult, ClarifyResponse, Corpus, Finding, HealthInfo, ProductType, RetrievedArticle } from "./types";
+import { ChatMessage, ChatRequest, ChatResponse, ChatSessionContext, CheckRequest, ComplianceResult, ClarifyResponse, Corpus, Finding, HealthInfo, ProductType, RetoneRequest, RetrievedArticle } from "./types";
 
 export async function checkCompliance(
   product_description: string,
   product_type: ProductType,
   tone: "simple" | "executive" | "technical" = "executive",
   lang: "ar" | "en" = "ar",
-  corpora?: Corpus[]
+  corpora?: Corpus[],
+  signal?: AbortSignal
 ) {
+  const body: CheckRequest = { product_description, product_type, tone, lang, corpora };
   const response = await fetch("/api/check", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ product_description, product_type, tone, lang, corpora })
+    body: JSON.stringify(body),
+    signal
   });
   if (!response.ok) throw new Error("تعذر تنفيذ فحص الامتثال");
   return (await response.json()) as ComplianceResult;
@@ -29,10 +32,11 @@ export async function retoneReport(
   lang: "ar" | "en",
   executive_summary = ""
 ) {
+  const body: RetoneRequest = { product_type, tone, lang, findings, executive_summary };
   const response = await fetch("/api/retone", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ product_type, tone, lang, findings, executive_summary })
+    body: JSON.stringify(body)
   });
   if (!response.ok) throw new Error("تعذر إعادة صياغة التقرير");
   return (await response.json()) as ComplianceResult;
@@ -56,12 +60,15 @@ export async function streamCheck(
   tone: "simple" | "executive" | "technical",
   lang: "ar" | "en",
   corpora: Corpus[] | undefined,
-  handlers: StreamHandlers
+  handlers: StreamHandlers,
+  signal?: AbortSignal
 ): Promise<ComplianceResult> {
+  const streamBody: CheckRequest = { product_description, product_type, tone, lang, corpora };
   const response = await fetch("/api/check-stream", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ product_description, product_type, tone, lang, corpora })
+    body: JSON.stringify(streamBody),
+    signal
   });
   if (!response.ok || !response.body) throw new Error(`stream unavailable (${response.status})`);
 
@@ -142,23 +149,24 @@ export async function getProductQuestions(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ product_description, product_type, lang })
     });
-    if (!response.ok) return { questions: [] };
+    if (!response.ok) return { questions: [], detected_product_category: "" };
     return (await response.json()) as ClarifyResponse;
   } catch {
-    return { questions: [] };
+    return { questions: [], detected_product_category: "" };
   }
 }
 
 export async function askConsultant(
   query: string,
-  messages: { role: "user" | "assistant"; content: string }[],
+  messages: ChatMessage[],
   context?: ChatSessionContext
 ) {
+  const body: ChatRequest = { query, messages, context };
   const response = await fetch("/api/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ query, messages, context })
+    body: JSON.stringify(body)
   });
   if (!response.ok) throw new Error("تعذر إرسال الاستشارة");
-  return response.json() as Promise<{ answer: string }>;
+  return response.json() as Promise<ChatResponse>;
 }

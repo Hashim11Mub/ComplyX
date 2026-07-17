@@ -25,11 +25,15 @@ def check_compliance(body: CheckRequest) -> ComplianceResult:
     if not chunks:
         raise HTTPException(status_code=503, detail="لم يتم العثور على مواد تنظيمية مرتبطة")
 
-    result = analyze_compliance(
-        product_description=body.product_description,
-        product_type=body.product_type,
-        retrieved_chunks=chunks,
-        tone=body.tone,
-        lang=body.lang,
-    )
+    try:
+        result = analyze_compliance(
+            product_description=body.product_description,
+            product_type=body.product_type,
+            retrieved_chunks=chunks,
+            tone=body.tone,
+            lang=body.lang,
+        )
+    except ValueError as exc:
+        print(f"[check] analyze_compliance failed: {exc}")
+        raise HTTPException(status_code=502, detail="تعذر إكمال التحليل، حاول مرة أخرى") from exc
     return result
