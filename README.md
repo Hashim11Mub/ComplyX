@@ -1,3 +1,5 @@
+![ComplyX project overview](docs/project-cover.svg)
+
 # ComplyX (ضامن)
 
 AI-powered regulatory compliance analysis for Saudi Arabian fintech products. Built for the **AMAD Hackathon 2026** (Alinma Bank × Tuwaiq Academy), Financial Regulations track.
